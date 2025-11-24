@@ -1,0 +1,455 @@
+X2 = reduce_sum(sqr(X), 1)
+X_norm = X / bcast(sqrt(X2 / 4096), 1)
+Q1 = X_norm * WQ
+K1 = X_norm * WK
+V1 = X_norm * WV
+Q2 = reshape(Q1, 1, 32, 128)
+K2 = reshape(K1, 1, 8, 128)
+V2 = reshape(V1, 1, 8, 128)
+
+Q = permute(Q2, 0, 2, 1, 3)
+K_cache = concat(K_cache, permute(K2, 0, 2, 1, 3), 1)
+V_cache = concat(K_cache, permute(V2, 0, 2, 1, 3), 1)
+
+C = Q * permute(K_cache, 0, 1, 3, 2)
+C_exp = exp(C)
+C_sum = reduce_sum(C_exp, 3)
+C_div = C_exp / bcast(C_sum, 3)
+O = C_div * V_cache
+O1 = permute(O, 0, 2, 1, 3)
+O2 = reshape(O1, 1, 4096)
+
+setup_shape_tracker(vec![
+    ("X", vec![64, 1, 4096]),
+    ("X_norm", vec![64, 1, 4096]),
+    ("X2", vec![64, 1]),
+    ("WQ", vec![64, 4096, 4096]),
+    ("WK", vec![64, 4096, 1024]),
+    ("WV", vec![64, 4096, 1024]),
+
+    ("Q1", vec![64, 1, 4096]),
+    ("K1", vec![64, 1, 1024]),
+    ("V1", vec![64, 1, 1024]),
+
+    ("Q2", vec![64, 1, 32, 128]),
+    ("K2", vec![64, 1, 8, 128]),
+    ("V2", vec![64, 1, 8, 128]),
+
+    ("Q", vec![64, 32, 1, 128]),
+
+    ("K_cache", vec![64, 8, 513, 128]),
+    ("V_cache", vec![64, 8, 513, 128]),
+
+    ("C", vec![64, 32, 1, 513]),
+    ("C_exp", vec![64, 32, 1, 513]),
+    ("C_sum", vec![64, 32, 1]),
+    ("C_div", vec![64, 32, 1, 513]),
+    ("O", vec![64, 32, 1, 128]),
+    ("O1", vec![64, 1, 32, 128]),
+    ("O2", vec![64, 1, 4096]),
+]);
+
+batch_size = 64
+num_q_heads = 32
+num_kv_heads = 8
+num_groups = 4
+
+(loop 0 64 1 b
+    (loop 0 4096 512 n2
+        (seq
+            (loop 0 4096 tile_k k
+                (seq
+                    (store (tensor X2)
+                        (+
+                            (x (load (tensor X2) (index (elem b) (fulltile))) 1)
+                            (rsum
+                                (sqr (load (input X) (index (elem b) (fulltile) (tile k))))
+                                2
+                            )
+                        )
+                        (index (elem b) (fulltile))
+                    )
+                    (store (tensor K1,V1)
+                        (+
+                            (x (load (tensor K1,V1) (index (elem b) (fulltile) (tile (/ n2 4)))) 1)
+                            (*
+                                (load (input X) (index (elem b) (fulltile) (tile k)))
+                                (load (input WK,WV) (index (elem b) (tile k) (tile (/ n2 4))))
+                            )
+                        )
+                        (index (elem b) (fulltile) (tile (/ n2 4)))
+                    )
+                )
+            )
+        (seq
+            (loop 0 4096 tile_k k
+                (store (tensor X_norm)
+                    (/
+                        (load (input X) (index (elem b) (fulltile) (tile k)))
+                        (bcast
+                            (sqrt
+                                (/
+                                    (load (tensor X2) (index (elem b) (fulltile)))
+                                    4096
+                                )
+                            )
+                            2
+                        )
+                    )
+                    (index (elem b) (fulltile) (tile k))
+                )
+            )
+        (seq
+            (store (tensor K1,V1)
+                (/
+                    (load (tensor K1,V1) (index (elem b) (fulltile) (tile (/ n2 4))))
+                    (bcast
+                        (sqrt
+                            (/
+                                (load (tensor X2) (index (elem b) (fulltile)))
+                                4096
+                            )
+                        )
+                        2
+                    )
+                )
+                (index (elem b) (fulltile) (tile (/ n2 4)))
+            )
+        (seq
+            (store (tensor K2,V2)
+                (unsqueeze (load (tensor K1,V1) (index (elem b) (fulltile) (tile (/ n2 4)))) 2)
+                (index (elem b) (fulltile) (elem n2) (fulltile))
+            )
+        (seq
+            (store (input K_cache,V_cache)
+                (permute3
+                    (load (tensor K2,V2) (index (elem b) (fulltile) (elem n2) (fulltile)))
+                    0 2 1 3
+                )
+                (index (elem b) (elem n2) (const_tile 512 1) (fulltile))
+            )
+            (loop n2 (+ n2 512) 128 n
+                (seq
+                    (loop 0 4096 tile_k k
+                        (store (tensor Q1)
+                            (+
+                                (x (load (tensor Q1) (index (elem b) (fulltile) (tile n))) 1)
+                                (*
+                                    (load (input X) (index (elem b) (fulltile) (tile k)))
+                                    (load (input WQ) (index (elem b) (tile k) (tile n)))
+                                )
+                            )
+                            (index (elem b) (fulltile) (tile n))
+                        )
+                    )
+                (seq
+                    (store (tensor Q1)
+                        (/
+                            (load (tensor Q1) (index (elem b) (fulltile) (tile n)))
+                            (bcast
+                                (sqrt
+                                    (/
+                                        (load (tensor X2) (index (elem b) (fulltile)))
+                                        4096
+                                    )
+                                )
+                                2
+                            )
+                        )
+                        (index (elem b) (fulltile) (tile n))
+                    )
+                (seq
+                    (store (tensor Q2)
+                        (unsqueeze (load (tensor Q1) (index (elem b) (fulltile) (tile n))) 2)
+                        (index (elem b) (fulltile) (elem n) (fulltile))
+                    )
+                (seq
+                    (store (tensor Q)
+                        (permute3
+                            (load (tensor Q2) (index (elem b) (fulltile) (elem n) (fulltile)))
+                            0 2 1 3
+                        )
+                        (index (elem b) (elem n) (fulltile) (fulltile))
+                    )
+                (seq
+                    (loop 0 513 tile_p p
+                        (seq
+                            (store (tensor C)
+                                (*
+                                    (load (tensor Q) (index (elem b) (elem n) (fulltile) (fulltile)))
+                                    (permute3
+                                        (load (input K_cache) (index (elem b) (elem n2) (tile p) (fulltile)))
+                                        0 1 3 2
+                                    )
+                                )
+                                (index (elem b) (elem n) (fulltile) (tile p))
+                            )
+                        (seq
+                            (store (tensor C_exp)
+                                (exp (load (tensor C) (index (elem b) (elem n) (fulltile) (tile p))))
+                                (index (elem b) (elem n) (fulltile) (tile p))
+                            )
+                        (seq
+                            (store (tensor C_sum)
+                                (+
+                                    (x (load (tensor C_sum) (index (elem b) (elem n) (fulltile))) 1)
+                                    (rsum
+                                        (load (tensor C_exp) (index (elem b) (elem n) (fulltile) (tile p)))
+                                        3
+                                    )
+                                )
+                                (index (elem b) (elem n) (fulltile))
+                            )
+                            (store (tensor O)
+                                (+
+                                    (x (load (tensor O) (index (elem b) (elem n) (fulltile) (fulltile))) 1)
+                                    (*
+                                        (load (tensor C_exp) (index (elem b) (elem n) (fulltile) (tile p)))
+                                        (load (input V_cache) (index (elem b) (elem n2) (tile p) (fulltile)))
+                                    )
+                                )
+                                (index (elem b) (elem n) (fulltile) (fulltile))
+                            )
+                        )
+                        )
+                        )
+                    )
+                (seq
+                    (loop 0 513 tile_p p
+                        (store (tensor C_div)
+                            (/
+                                (load (tensor C_exp) (index (elem b) (elem n) (fulltile) (tile p)))
+                                (bcast
+                                    (load (tensor C_sum) (index (elem b) (elem n) (fulltile)))
+                                    3
+                                )
+                            )
+                            (index (elem b) (elem n) (fulltile) (tile p))
+                        )
+                    )
+                (seq
+                    (store (tensor O)
+                        (/
+                            (load (tensor O) (index (elem b) (elem n) (fulltile) (fulltile)))
+                            (bcast
+                                (load (tensor C_sum) (index (elem b) (elem n) (fulltile)))
+                                3
+                            )
+                        )
+                        (index (elem b) (elem n) (fulltile) (fulltile))
+                    )
+                (seq
+                    (store (tensor O1)
+                        (permute3
+                            (load (tensor O) (index (elem b) (elem n) (fulltile) (fulltile)))
+                            0 2 1 3
+                        )
+                        (index (elem b) (fulltile) (elem n) (fulltile))
+                    )
+                    (store (output O2)
+                        (squeeze
+                            (load (tensor O1) (index (elem b) (fulltile) (elem n) (fulltile)))
+                            2
+                        )
+                        (index (elem b) (fulltile) (tile n))
+                    )
+                )
+                )
+                )
+                )
+                )
+                )
+                )
+                )
+            )
+        )
+        )
+        )
+        )
+        )
+    )
+)
+
+
+======================================================================================
+
+MHA Batched version
+
+(ploop 0 16 1 b
+    (ploop 0 4096 128 n
+        (seq
+            (sloop 0 4096 tile_k k
+                (seq
+                    (store
+                        (tensor X2)
+                        (+
+                            (rsum
+                                (sqr
+                                    (load
+                                        (input X)
+                                        (index (elem b) fulltile
+                                            (tile k)))) 2)
+                            (x
+                                (load
+                                    (tensor X2)
+                                    (index (elem b) fulltile)) 1))
+                        (index (elem b) fulltile))
+                    (store
+                        (tensor Q1,K1,V1)
+                        (+
+                            (x
+                                (load
+                                    (tensor Q1,K1,V1)
+                                    (index (elem b) fulltile
+                                        (tile n))) 1)
+                            (*
+                                (load
+                                    (input X)
+                                    (index (elem b) fulltile
+                                        (tile k)))
+                                (load
+                                    (input WQ,WK,WV)
+                                    (index
+                                        (elem b) (tile k)
+                                        (tile n)))))
+                        (index (elem b) fulltile
+                            (tile n)))))
+            (seq
+                (sloop 0 4096 tile_k k dummy)
+                (seq
+                    (store
+                        (tensor Q1,K1,V1)
+                        (/
+                            (load
+                                (tensor Q1,K1,V1)
+                                (index (elem b) fulltile
+                                    (tile n)))
+                            (bcast
+                                (sqrt
+                                    (/
+                                        (load
+                                            (tensor X2) (index (elem b) fulltile)) 4096)) 2))
+                        (index (elem b) fulltile
+                            (tile n)))
+                    (seq dummy
+                        (seq
+                            (store
+                                (tensor Q,K,V)
+                                (permute3
+                                    (unsqueeze
+                                        (load
+                                            (tensor Q1,K1,V1)
+                                            (index (elem b) fulltile
+                                                (tile n))) 2) 0 2 1 3)
+                                (index
+                                    (elem b) (elem n) fulltile fulltile))
+                        (seq
+                            (store
+                                (input K_cache)
+                                (load
+                                    (tensor K)
+                                    (index
+                                        (elem b) (elem n) fulltile fulltile))
+                                (index
+                                    (elem b) (elem n)
+                                    (const_tile 512 16) fulltile))
+                        (seq
+                            (store
+                                (input V_cache)
+                                (load
+                                    (tensor V)
+                                    (index
+                                        (elem b) (elem n) fulltile fulltile))
+                                (index
+                                    (elem b) (elem n)
+                                    (const_tile 512 16) fulltile))
+                            (seq
+                                (sloop 0 528 tile_p p
+                                            (seq dummy
+                                                (seq
+                                                    (store
+                                                        (tensor C_exp)
+                                                        (exp
+                                                            (*
+                                                                (load
+                                                                    (tensor Q)
+                                                                    (index
+                                                                        (elem b) (elem n) fulltile fulltile))
+                                                                (permute3
+                                                                    (load
+                                                                        (input K_cache)
+                                                                        (index
+                                                                            (elem b) (elem n)
+                                                                            (tile p) fulltile)) 0 1 3 2)))
+                                                        (index
+                                                            (elem b) (elem n) fulltile
+                                                            (tile p)))
+                                                    (seq
+                                                        (store
+                                                            (tensor C_sum)
+                                                            (+
+                                                                (x
+                                                                    (load
+                                                                        (tensor C_sum)
+                                                                        (index
+                                                                            (elem b) (elem n) fulltile)) 1)
+                                                                (rsum
+                                                                    (load
+                                                                        (tensor C_exp)
+                                                                        (index
+                                                                            (elem b) (elem n) fulltile
+                                                                            (tile p))) 3))
+                                                            (index
+                                                                (elem b) (elem n) fulltile))
+                                                        (store
+                                                            (tensor O)
+                                                            (+
+                                                                (x
+                                                                    (load
+                                                                        (tensor O)
+                                                                        (index
+                                                                            (elem b) (elem n) fulltile fulltile)) 1)
+                                                                (*
+                                                                    (load
+                                                                        (tensor C_exp)
+                                                                        (index
+                                                                            (elem b) (elem n) fulltile
+                                                                            (tile p)))
+                                                                    (load
+                                                                        (input V_cache)
+                                                                        (index
+                                                                            (elem b) (elem n)
+                                                                            (tile p) fulltile))))
+                                                            (index
+                                                                (elem b) (elem n) fulltile fulltile))))))
+                                (seq
+                                    (sloop 0 528 tile_p p dummy)
+                                    (seq
+                                        (store
+                                            (tensor O)
+                                            (/
+                                                (load
+                                                    (tensor O)
+                                                    (index
+                                                        (elem b) (elem n) fulltile fulltile))
+                                                (bcast
+                                                    (load
+                                                        (tensor C_sum)
+                                                        (index
+                                                            (elem b) (elem n) fulltile)) 3))
+                                            (index
+                                                (elem b) (elem n) fulltile fulltile))
+                                        (seq dummy
+                                            (store
+                                                (output O2)
+                                                (squeeze
+                                                    (permute3
+                                                        (load
+                                                            (tensor O)
+                                                            (index
+                                                                (elem b) (elem n) fulltile fulltile)) 0 2 1 3) 2)
+                                                (index (elem b) fulltile
+                                                    (tile n)))))))))))))))
+)
+
+==================================================================================================

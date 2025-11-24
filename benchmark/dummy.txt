@@ -1,0 +1,233 @@
+(loop 0 4096 tile_k k
+    (store (tensor X2)
+        (+
+            (load (tensor X2) (index (fulltile)))
+            (/
+                (rsum (sqr (load (input X) (index (fulltile) (tile k)))) 1)
+                4096
+            )
+        )
+        (index (fulltile))
+    )
+)
+(loop 0 4096 tile_k k
+    (store (tensor X_norm)
+        (/
+            (load (input X) (index (fulltile) (tile k)))
+            (sqrt (load (tensor X2) (index (fulltile))))
+        )
+        (index (fulltile) (tile k))
+    )
+)
+(loop 0 4096 tile_n n
+    (loop 0 4096 tile_k k
+        (store (tensor Q1,K1,V1)
+            (+
+                (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+                (*
+                    (load (tensor X_norm) (index (fulltile) (tile k)))
+                    (load (input WQ,WK,WV) (index (tile k) (tile n)))
+                )
+            )
+            (index (fulltile) (tile n))
+        )
+    )
+)
+
+=> Loop insertion & Expression propagation
+
+(loop 0 4096 tile_k k
+    (store (tensor X2)
+        (+
+            (load (tensor X2) (index (fulltile)))
+            (/
+                (rsum (sqr (load (input X) (index (fulltile) (tile k)))) 1)
+                4096
+            )
+        )
+        (index (fulltile))
+    )
+)
+(loop 0 4096 tile_n n
+    (loop 0 4096 tile_k k
+        (store (tensor X_norm)
+            (/
+                (load (input X) (index (fulltile) (tile k)))
+                (sqrt (load (tensor X2) (index (fulltile))))
+            )
+            (index (fulltile) (tile k))
+        )
+        (store (tensor Q1,K1,V1)
+            (+
+                (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+                (*
+                    (/
+                        (load (input X) (index (fulltile) (tile k)))
+                        (sqrt (load (tensor X2) (index (fulltile))))
+                    )
+                    (load (input WQ,WK,WV) (index (tile k) (tile n)))
+                )
+            )
+            (index (fulltile) (tile n))
+        )
+    )
+)
+
+=> Distributivity & Deadcode elimination
+
+(loop 0 4096 tile_k k
+    (store (tensor X2)
+        (+
+            (load (tensor X2) (index (fulltile)))
+            (/
+                (rsum (sqr (load (input X) (index (fulltile) (tile k)))) 1)
+                4096
+            )
+        )
+        (index (fulltile))
+    )
+)
+(loop 0 4096 tile_n n
+    (loop 0 4096 tile_k k
+        (store (tensor Q1,K1,V1)
+            (+
+                (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+                (/
+                    (*
+                        (load (input X) (index (fulltile) (tile k)))
+                        (load (input WQ,WK,WV) (index (tile k) (tile n)))
+                    )
+                    (sqrt (load (tensor X2) (index (fulltile))))
+                )
+            )
+            (index (fulltile) (tile n))
+        )
+    )
+)
+
+=> Algebraic factoring in loop body
+
+(loop 0 4096 tile_k k
+    (store (tensor X2)
+        (+
+            (load (tensor X2) (index (fulltile)))
+            (/
+                (rsum (sqr (load (input X) (index (fulltile) (tile k)))) 1)
+                4096
+            )
+        )
+        (index (fulltile))
+    )
+)
+(loop 0 4096 tile_n n
+    (loop 0 4096 tile_k k
+        (store (tensor Q1,K1,V1)
+            (+
+                (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+                (*
+                    (load (input X) (index (fulltile) (tile k)))
+                    (load (input WQ,WK,WV) (index (tile k) (tile n)))
+                )
+            )
+            (index (fulltile) (tile n))
+        )
+    )
+    (store (tensor Q1,K1,V1)
+        (/
+            (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+            (sqrt (load (tensor X2) (index (fulltile))))
+        )
+    )
+)
+
+=> Loop insertion
+
+(loop 0 4096 tile_n n
+    (loop 0 4096 tile_k k
+        (store (tensor X2)
+            (+
+                (load (tensor X2) (index (fulltile)))
+                (/
+                    (rsum (sqr (load (input X) (index (fulltile) (tile k)))) 1)
+                    4096
+                )
+            )
+            (index (fulltile))
+        )
+        (store (tensor Q1,K1,V1)
+            (+
+                (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+                (*
+                    (load (input X) (index (fulltile) (tile k)))
+                    (load (input WQ,WK,WV) (index (tile k) (tile n)))
+                )
+            )
+            (index (fulltile) (tile n))
+        )
+    )
+    (store (tensor Q1,K1,V1)
+        (/
+            (load (tensor Q1,K1,V1) (index (fulltile) (tile n)))
+            (sqrt (load (tensor X2) (index (fulltile))))
+        )
+    )
+)
+
+=============================================================================================
+
+(loop k
+    RMS = RMS + rsum(X[tile k]^2) / 4096
+)
+(loop k
+    X_norm[tile k] = X[tile k] / sqrt(RMS)
+)
+(loop n
+    (loop k
+        Q,K,V[tile n] = Q,K,V[tile n] + X_norm[tile k] * WQ,WK,WV[tile k,n]
+    )
+)
+
+=> Loop insertion & Expression propagation
+
+(loop k
+    RMS = RMS + rsum(X[tile k]^2) / 4096
+)
+(loop n
+    (loop k
+        X_norm[tile k] = X[tile k] / sqrt(RMS)
+        Q,K,V[tile n] = Q,K,V[tile n] + (X[tile k] / sqrt(RMS)) * WQ,WK,WV[tile k,n]
+    )
+)
+
+=> Distributivity & Deadcode elimination
+
+(loop k
+    RMS = RMS + rsum(X[tile k]^2) / 4096
+)
+(loop n
+    (loop k
+        Q,K,V[tile n] = Q,K,V[tile n] + (X[tile k] * WQ,WK,WV[tile k,n]) / sqrt(RMS) 
+    )
+)
+
+=> Algebraic factoring in loop body
+
+(loop k
+    RMS = RMS + rsum(X[tile k]^2) / 4096
+)
+(loop n
+    (loop k
+        Q,K,V[tile n] = Q,K,V[tile n] + (X[tile k] * WQ,WK,WV[tile k,n])
+    )
+     Q,K,V[tile n] = Q,K,V[tile n] / sqrt(RMS)
+)
+
+=> Loop insertion
+
+(loop n
+    (loop k
+        RMS = RMS + rsum(X[tile k]^2) / 4096
+        Q,K,V[tile n] = Q,K,V[tile n] + (X[tile k] * WQ,WK,WV[tile k,n])
+    )
+     Q,K,V[tile n] = Q,K,V[tile n] / sqrt(RMS)
+)

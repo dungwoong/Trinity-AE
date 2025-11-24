@@ -1,0 +1,216 @@
+[attacc version2]
+N = 2048
+D = 64
+H = 32
+M = 256
+P = 2048+16
+
+X: MxN
+WQ, WK, WV: NxN
+Q1, K1, V1: MxN
+Q2, K2, V2: MxHxD (N = HxD)
+Q, K, V: HxMxD (N = HxD)
+K_cache, V_cahce: HxPxD
+C: HxMxP
+D: HxMxP
+D1: MxO
+
+(seq
+    (loop 0 2048 tile_n n
+        (loop 0 2048 tile_k k
+            (store (tensor Q1)
+                (+
+                    (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                    (*
+                        (load (input X) (index (fulltile) (tile k)))
+                        (load (input WQ) (index (tile k) (tile n)))
+                    )
+                )
+                (index (fulltile) (tile n))
+            )
+        )
+    )
+(seq
+    (loop 0 2048 tile_n n
+        (loop 0 2048 tile_k k
+            (store (tensor K1)
+                (+
+                    (x (load (tensor K1) (index (fulltile) (tile n))) 1)
+                    (*
+                        (load (input X) (index (fulltile) (tile k)))
+                        (load (input WK) (index (tile k) (tile n)))
+                    )
+                )
+                (index (fulltile) (tile n))
+            )
+        )
+    )
+(seq
+    (loop 0 2048 tile_n n
+        (loop 0 2048 tile_k k
+            (store (tensor V1)
+                (+
+                    (x (load (tensor V1) (index (fulltile) (tile n))) 1)
+                    (*
+                        (load (input X) (index (fulltile) (tile k)))
+                        (load (input WV) (index (tile k) (tile n)))
+                    )
+                )
+                (index (fulltile) (tile n))
+            )
+        )
+    )
+(seq
+    (loop 0 2048 64 n
+        (store (tensor Q2)
+            (unsqueeze (load (tensor Q1) (index (fulltile) (tile n))) 1)
+            (index (fulltile) (elem n) (fulltile))
+        )
+    )
+(seq
+    (loop 0 2048 64 n
+        (store (tensor K2)
+            (unsqueeze (load (tensor K1) (index (fulltile) (tile n))) 1)
+            (index (fulltile) (elem n) (fulltile))
+        )
+    )
+(seq
+    (loop 0 2048 64 n
+        (store (tensor V2)
+            (unsqueeze (load (tensor V1) (index (fulltile) (tile n))) 1)
+            (index (fulltile) (elem n) (fulltile))
+        )
+    )
+(seq
+    (loop 0 32 tile_h h
+        (store (tensor Q)
+            (permute3
+                (load (tensor Q2) (index (fulltile) (tile h) (fulltile)))
+                1 0 2
+            )
+            (index (tile h) (fulltile) (fulltile))
+        )
+    )
+(seq
+    (loop 0 32 tile_h h
+        (store (tensor K)
+            (permute3
+                (load (tensor K2) (index (fulltile) (tile h) (fulltile)))
+                1 0 2
+            )
+            (index (tile h) (fulltile) (fulltile))
+        )
+    )
+(seq
+    (loop 0 32 tile_h h
+        (store (tensor V)
+            (permute3
+                (load (tensor V2) (index (fulltile) (tile h) (fulltile)))
+                1 0 2
+            )
+            (index (tile h) (fulltile) (fulltile))
+        )
+    )
+(seq
+    (loop 0 32 tile_h h
+        (store (input K_cache)
+            (load (tensor K) (index (tile h) (fulltile) (fulltile)))
+            (index (tile h) (fulltile) (fulltile))
+        )
+    )
+(seq
+    (loop 0 32 tile_h h
+        (store (input V_cache)
+            (load (tensor V) (index (tile h) (fulltile) (fulltile)))
+            (index (tile h) (fulltile) (fulltile))
+        )
+    )
+(seq
+    (loop 0 32 tile_h h 
+        (loop 0 2064 tile_p p
+            (store (tensor C)
+                (*
+                    (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
+                    (permute3
+                        (load (input K_cache) (index (tile h) (tile p) (fulltile)))
+                        0 2 1
+                    )
+                )
+                (index (tile h) (fulltile) (tile p))
+            )
+        )
+    )
+(seq
+    (loop 0 32 tile_h h 
+        (loop 0 2064 tile_p p
+            (store (tensor C_exp)
+                (exp (load (tensor C) (index (tile h) (fulltile) (tile p))))
+                (index (tile h) (fulltile) (tile p))
+            )
+        )
+    )
+(seq
+    (loop 0 32 tile_h h 
+        (loop 0 2064 tile_p p
+            (store (tensor C_sum)
+                (+
+                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (rsum
+                        (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
+                        2
+                    )
+                )
+                (index (tile h) (fulltile))
+            )
+        )
+    )
+(seq
+    (loop 0 32 tile_h h 
+        (loop 0 2064 tile_p p
+            (store (tensor C_div)
+                (/
+                    (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
+                    (bcast
+                        (load (tensor C_sum) (index (tile h) (fulltile)))
+                        2
+                    )
+                )
+                (index (tile h) (fulltile) (tile p))
+            )
+        )
+    )
+(seq
+    (loop 0 32 tile_h h 
+        (loop 0 2064 tile_p p
+            (store (tensor O)
+                (+
+                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (*
+                        (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
+                        (load (input V_cache) (index (tile h) (tile p) (fulltile)))
+                    )
+                )
+                (index (tile h) (fulltile) (fulltile))
+            )
+        )
+    )
+(seq
+    (loop 0 32 tile_h h
+        (store (tensor O1)
+            (permute3
+                (load (tensor O) (index (tile h) (fulltile) (fulltile)))
+                1 0 2
+            )
+            (index (fulltile) (tile h) (fulltile))
+        )
+    )
+    (loop 0 2048 64 n
+        (store (output O2)
+            (squeeze
+                (load (tensor O1) (index (fulltile) (elem n) (fulltile)))
+                1
+            )
+            (index (fulltile) (tile n))
+        )
+    )
+)))))))))))))))))
