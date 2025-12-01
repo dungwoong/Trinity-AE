@@ -3,10 +3,10 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::fs::File;
 use rayon::prelude::*;
-use TileIR::*;
-use TileIR::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
-use TileIR::shape::{ShapeTracker, TensorShape, Dimension};
-use TileIR::cost::{create_fine_grained_extractor};
+use trinity::*;
+use trinity::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
+use trinity::shape::{ShapeTracker, TensorShape, Dimension};
+use trinity::cost::{create_fine_grained_extractor};
 use egg::*;
 use std::sync::Once;
 
@@ -159,16 +159,16 @@ fn extract_rmsnorm_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_rmsnorm_cost3_kern2_wo_scheduler.json", 3, 2) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_rmsnorm_cost3_kern2_wo_scheduler.json", 3, 2) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_rmsnorm_cost3_kern2_wo_scheduler.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_rmsnorm_cost3_kern2_wo_scheduler.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             (expressions, tile_sets)
@@ -179,7 +179,7 @@ fn extract_rmsnorm_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/falcon7b_rmsnorm_cost3_kern2_wo_scheduler.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/falcon7b_rmsnorm_cost3_kern2_wo_scheduler.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     
@@ -418,16 +418,16 @@ fn extract_qkvattn_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_attacc_cost3_kern2_wo_scheduler.json", 3, 2) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_attacc_cost3_kern2_wo_scheduler.json", 3, 2) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_attacc_cost3_kern2_wo_scheduler.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_attacc_cost3_kern2_wo_scheduler.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             (expressions, tile_sets)
@@ -438,7 +438,7 @@ fn extract_qkvattn_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/falcon7b_attacc_cost3_kern2_wo_scheduler.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/falcon7b_attacc_cost3_kern2_wo_scheduler.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     
@@ -743,16 +743,16 @@ fn extract_whole_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_rmsnorm_attacc_cost6_kern2_wo_scheduler.json", 6, 2) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_rmsnorm_attacc_cost6_kern2_wo_scheduler.json", 6, 2) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_rmsnorm_attacc_cost6_kern2_wo_scheduler.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_rmsnorm_attacc_cost6_kern2_wo_scheduler.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             (expressions, tile_sets)
@@ -763,7 +763,7 @@ fn extract_whole_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/falcon7b_rmsnorm_attacc_cost6_kern2_wo_scheduler.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/falcon7b_rmsnorm_attacc_cost6_kern2_wo_scheduler.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     
@@ -1004,16 +1004,16 @@ fn extract_rmsnorm_qkv_attn_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    // match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_rmsnorm_qkv_attn_cost6_kern1_wo_scheduler2.json", 6, 1) {
+    // match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_rmsnorm_qkv_attn_cost6_kern1_wo_scheduler2.json", 6, 1) {
     //     Ok(count) => println!("Saved {} expressions", count),
     //     Err(e) => eprintln!("Save error: {}", e),
     // }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_rmsnorm_qkv_attn_cost6_kern1_wo_scheduler2.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_rmsnorm_qkv_attn_cost6_kern1_wo_scheduler2.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             println!("{:?}", tile_sets);
@@ -1025,7 +1025,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/falcon7b_rmsnorm_qkv_attn_cost6_kern1_wo_scheduler3.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/falcon7b_rmsnorm_qkv_attn_cost6_kern1_wo_scheduler3.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     
@@ -1255,16 +1255,16 @@ fn extract_ffn_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_ffn_cost6_kern5_wo_scheduler2.json", 6, 5) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_ffn_cost6_kern5_wo_scheduler2.json", 6, 5) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_ffn_cost6_kern5_wo_scheduler2.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_ffn_cost6_kern5_wo_scheduler2.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             (expressions, tile_sets)
@@ -1275,7 +1275,7 @@ fn extract_ffn_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/falcon7b_ffn_cost6_kern5_wo_scheduler2.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/falcon7b_ffn_cost6_kern5_wo_scheduler2.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     
@@ -1398,16 +1398,16 @@ fn extract_gatedmlp_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_gatedmlp_cost3_kern1_wo_scheduler.json", 3, 1) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_gatedmlp_cost3_kern1_wo_scheduler.json", 3, 1) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/falcon7b_gatedmlp_cost3_kern1_wo_scheduler.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/falcon7b_gatedmlp_cost3_kern1_wo_scheduler.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             (expressions, tile_sets)
@@ -1418,7 +1418,7 @@ fn extract_gatedmlp_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/falcon7b_gatedmlp_cost3_kern1_wo_scheduler.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/falcon7b_gatedmlp_cost3_kern1_wo_scheduler.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     

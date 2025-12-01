@@ -3,9 +3,9 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::fs::File;
 use rayon::prelude::*;
-use TileIR::*;
-use TileIR::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
-use TileIR::shape::{ShapeTracker, TensorShape, Dimension};
+use trinity::*;
+use trinity::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
+use trinity::shape::{ShapeTracker, TensorShape, Dimension};
 use egg::*;
 use std::sync::Once;
 
@@ -280,16 +280,16 @@ fn extract_expressions() {
     // let cost_expressions_v3 = list_expressions_with_target_cost_v3(&runner);
     // println!("[Cost model v3] There are {:?} expressions", cost_expressions_v3.len());
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/llama7b_attacc_cost3_kern2.json", 3, 2) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/llama7b_attacc_cost3_kern2.json", 3, 2) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
     
     // Load expressions
-    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json") {
-    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/attacc_cost3_kern2.json", 27) {
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/llama7b_attacc_cost3_kern2.json", usize::MAX) {
+    // let expressions = match list_expressions_with_target_cost_v3_part2(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json") {
+    // let expressions = match list_expressions_from_semi_all(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    // let expressions = match list_expressions_from_semi_naive(&runner, "/home/jhpark676/Project/trinity/expressions/semi/attacc_cost3_kern2.json", 27) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/llama7b_attacc_cost3_kern2.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             (expressions, tile_sets)
@@ -300,7 +300,7 @@ fn extract_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/llama7b_attacc_cost3_kern2.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/llama7b_attacc_cost3_kern2.txt").expect("Failed to create file");
     // let file = File::create("tmp.txt").expect("aa");
     let mut writer = BufWriter::new(file);
     

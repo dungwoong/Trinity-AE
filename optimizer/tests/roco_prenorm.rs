@@ -3,10 +3,10 @@ use std::io::BufWriter;
 use std::io::Write;
 use std::fs::File;
 use rayon::prelude::*;
-use TileIR::*;
-use TileIR::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
-use TileIR::shape::{ShapeTracker, TensorShape, Dimension};
-use TileIR::cost::{create_fine_grained_extractor};
+use trinity::*;
+use trinity::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
+use trinity::shape::{ShapeTracker, TensorShape, Dimension};
+use trinity::cost::{create_fine_grained_extractor};
 use egg::*;
 use std::sync::Once;
 
@@ -249,12 +249,12 @@ fn llama_extract_rmsnorm_qkv_attn_expressions() {
         8,
     );
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/roco_prenorm_llama_cost6_kern2.json", 6, 2) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/roco_prenorm_llama_cost6_kern2.json", 6, 2) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
 
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/roco_prenorm_llama_cost6_kern2.json", usize::MAX) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/roco_prenorm_llama_cost6_kern2.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             println!("{:?}", tile_sets);
@@ -266,7 +266,7 @@ fn llama_extract_rmsnorm_qkv_attn_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/roco_prenorm_llama_cost6_kern2.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/roco_prenorm_llama_cost6_kern2.txt").expect("Failed to create file");
     let mut writer = BufWriter::new(file);
     
     expressions
@@ -507,12 +507,12 @@ fn falcon_extract_rmsnorm_qkv_attn_expressions() {
         8,
     );
 
-    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/roco_prenorm_falcon_cost6_kern2.json", 6, 2) {
+    match list_expressions_with_target_cost_v3_part1(&runner, "/home/jhpark676/Project/trinity/expressions/semi/roco_prenorm_falcon_cost6_kern2.json", 6, 2) {
         Ok(count) => println!("Saved {} expressions", count),
         Err(e) => eprintln!("Save error: {}", e),
     }
 
-    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/TileIR/expressions/semi/roco_prenorm_falcon_cost6_kern2.json", usize::MAX) {
+    let (expressions, tile_sets) = match list_expressions_from_semi_with_cost(&runner, "/home/jhpark676/Project/trinity/expressions/semi/roco_prenorm_falcon_cost6_kern2.json", usize::MAX) {
         Ok((expressions, tile_sets)) => {
             println!("Loaded {} final expressions", expressions.len());
             println!("{:?}", tile_sets);
@@ -524,7 +524,7 @@ fn falcon_extract_rmsnorm_qkv_attn_expressions() {
         }
     };
 
-    let file = File::create("/home/jhpark676/Project/TileIR/expressions/roco_prenorm_falcon_cost6_kern2.txt").expect("Failed to create file");
+    let file = File::create("/home/jhpark676/Project/trinity/expressions/roco_prenorm_falcon_cost6_kern2.txt").expect("Failed to create file");
     let mut writer = BufWriter::new(file);
     
     expressions

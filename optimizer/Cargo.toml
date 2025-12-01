@@ -1,5 +1,5 @@
 [package]
-name = "TileIR"
+name = "trinity"
 version = "0.1.0"
 edition = "2018"
 authors = ["Jaehyeong Park <jaehyeong.park99@gmail.com>"]
@@ -8,12 +8,12 @@ license = "MIT"
 
 
 [lib]
-name = "TileIR"
+name = "trinity"
 path = "src/lib.rs"
 
 [dependencies]
 # Local egg library
-egg = { path = "/home/jhpark676/Project/TileIR/egg" }
+egg = { path = "egg" }
 
 env_logger = {version = "0.9.0", default-features = false}
 hashbrown = "0.15.2"

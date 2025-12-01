@@ -1,5 +1,5 @@
 use egg::{test_fn2, test_fn_not2, *};
-use TileIR::*;
+use trinity::*;
 
 
 #[test]

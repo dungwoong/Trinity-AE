@@ -1,6 +1,6 @@
-use TileIR::*;
-use TileIR::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
-use TileIR::shape::{ShapeTracker, TensorShape, Dimension};
+use trinity::*;
+use trinity::language::{TileLang, LoopAnalysis, SHAPE_TRACKER};
+use trinity::shape::{ShapeTracker, TensorShape, Dimension};
 use egg::*;
 
 pub type EGraph = egg::EGraph<TileLang, LoopAnalysis>;

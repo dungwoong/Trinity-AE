@@ -1,5 +1,5 @@
 use egg::{test_fn2, test_fn_not2, *};
-use TileIR::*;
+use trinity::*;
 use std::io::BufWriter;
 use std::io::Write;
 use std::fs::File;
@@ -1491,7 +1491,7 @@ fn saturate_insertion() {
 
 #[test]
 fn test_save_load_egraph() {
-    use TileIR::{save_raw_egraph, load_raw_egraph};
+    use trinity::{save_raw_egraph, load_raw_egraph};
     use std::fs;
     
     // Create a test expression and run until saturation
