@@ -51,27 +51,27 @@ pub fn test_runner<L, A>(
     //     runner = runner.with_time_limit(std::time::Duration::from_secs(1000))
     // }
     runner = runner.with_node_limit(usize::MAX).with_iter_limit(100).with_time_limit(std::time::Duration::from_secs(360000));
-    runner = runner
-    .with_hook(|runner| {
-        if runner.iterations.is_empty() {
-            println!("No iterations yet");
-            return Ok(());
-        }
+    // runner = runner
+    // .with_hook(|runner| {
+    //     if runner.iterations.is_empty() {
+    //         println!("No iterations yet");
+    //         return Ok(());
+    //     }
         
-        let current_iter = runner.iterations.len();
-        let iteration_data = &runner.iterations[current_iter - 1];
-        println!("Iteration {}: {} rule applications", 
-        current_iter,
-        iteration_data.applied.len());
+    //     let current_iter = runner.iterations.len();
+    //     let iteration_data = &runner.iterations[current_iter - 1];
+    //     println!("Iteration {}: {} rule applications", 
+    //     current_iter,
+    //     iteration_data.applied.len());
         
-        // 각 rule별 적용 횟수
-        for (rule_name, match_count) in &iteration_data.applied {
-            println!("  {}: {} matches", rule_name, match_count);
-        }
-        println!("----------------------------------------");
+    //     // 각 rule별 적용 횟수
+    //     for (rule_name, match_count) in &iteration_data.applied {
+    //         println!("  {}: {} matches", rule_name, match_count);
+    //     }
+    //     println!("----------------------------------------");
         
-        Ok(())
-    });
+    //     Ok(())
+    // });
 
     // 기본 BackoffScheduler
     let mut default_scheduler = BackoffScheduler::default()
