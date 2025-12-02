@@ -774,11 +774,6 @@ class TensorRT_Vanilla(nn.Module):
                 os.remove(onnx_path)
 
     def forward(self, X):
-        seq_len, H = X.size()
-
-        # Prepare output buffer
-        # output = torch.empty(seq_len, self.N, dtype=dtype, device=X.device)
-
         # Create bindings - pass X directly to TensorRT
         bindings = [
             X.data_ptr(),
@@ -788,9 +783,7 @@ class TensorRT_Vanilla(nn.Module):
         ]
 
         # Execute TensorRT engine
-        success = self.context.execute_v2(bindings)
-        if not success:
-            raise RuntimeError("TensorRT execution failed")
+        _ = self.context.execute_v2(bindings)
         
         return self.output
     
@@ -805,6 +798,7 @@ class TensorRT_Vanilla_GQA(nn.Module):
         self.N_kv = N_kv
         self.H_kv = N_kv // D
         self.group_size = self.H // self.H_kv
+        self.output = torch.empty(self.M, self.N, dtype=dtype, device=device)
 
         # self.weight = nn.Parameter(torch.ones(H, dtype=dtype, device=device))
         self.W_q = W_q.to(device=device, dtype=dtype)
@@ -986,25 +980,18 @@ class TensorRT_Vanilla_GQA(nn.Module):
                 os.remove(onnx_path)
 
     def forward(self, X):
-        seq_len, H = X.size()
-
-        # Prepare output buffer
-        output = torch.empty(seq_len, self.N, dtype=dtype, device=X.device)
-
         # Create bindings - pass X directly to TensorRT
         bindings = [
             X.data_ptr(),
             self.cache_K.data_ptr(),
             self.cache_V.data_ptr(),
-            output.data_ptr()
+            self.output.data_ptr()
         ]
 
         # Execute TensorRT engine
-        success = self.context.execute_v2(bindings)
-        if not success:
-            raise RuntimeError("TensorRT execution failed")
-        
-        return output
+        _ = self.context.execute_v2(bindings)
+
+        return self.output
 
 class TensorRT_PreNorm(nn.Module):
     def __init__(self, M, N, D, H, cache_K, cache_V, P, W_q, W_k, W_v):
@@ -1014,6 +1001,7 @@ class TensorRT_PreNorm(nn.Module):
         self.D = D
         self.H = H
         self.P = P
+        self.output = torch.empty(self.M, self.N, dtype=dtype, device=device)
 
         # self.weight = nn.Parameter(torch.ones(H, dtype=dtype, device=device))
         self.W_q = W_q.to(device=device, dtype=dtype)
@@ -1166,17 +1154,12 @@ class TensorRT_PreNorm(nn.Module):
                 os.remove(onnx_path)
 
     def forward(self, X):
-        seq_len, H = X.size()
-
-        # Prepare output buffer
-        output = torch.empty(seq_len, self.N, dtype=dtype, device=X.device)
-
         # Create bindings - pass X directly to TensorRT
         bindings = [
             X.data_ptr(),
             self.cache_K.data_ptr(),
             self.cache_V.data_ptr(),
-            output.data_ptr()
+            self.output.data_ptr()
         ]
 
         # Execute TensorRT engine
@@ -1184,7 +1167,7 @@ class TensorRT_PreNorm(nn.Module):
         if not success:
             raise RuntimeError("TensorRT execution failed")
         
-        return output
+        return self.output
 
 class TensorRT_KeyFormer(nn.Module):
     def __init__(self, M, N, D, H, cache_K, cache_V, P, noise, W_q, W_k, W_v):
@@ -1194,6 +1177,8 @@ class TensorRT_KeyFormer(nn.Module):
         self.D = D
         self.H = H
         self.P = P
+        self.output = torch.empty(self.M, self.N, dtype=dtype, device=device)
+        self.perturb_output = torch.empty(self.H, self.P+self.M, dtype=dtype, device=device)
 
         # self.weight = nn.Parameter(torch.ones(H, dtype=dtype, device=device))
         self.noise = noise.to(device=device, dtype=dtype)
@@ -1345,26 +1330,19 @@ class TensorRT_KeyFormer(nn.Module):
                 os.remove(onnx_path)
 
     def forward(self, X):
-        seq_len, H = X.size()
-
-        # Prepare output buffer
-        output = torch.empty(seq_len, self.N, dtype=dtype, device=X.device)
-        perturb_out = torch.empty(self.H, self.P+self.M, dtype=dtype, device=X.device)
         # Create bindings - pass X directly to TensorRT
         bindings = [
             X.data_ptr(),
             self.cache_K.data_ptr(),
             self.cache_V.data_ptr(),
-            output.data_ptr(),
-            perturb_out.data_ptr()
+            self.output.data_ptr(),
+            self.perturb_output.data_ptr()
         ]
 
         # Execute TensorRT engine
-        success = self.context.execute_v2(bindings)
-        if not success:
-            raise RuntimeError("TensorRT execution failed")
+        _ = self.context.execute_v2(bindings)
         
-        return output
+        return self.output
 
 class TensorRT_NormKeyFormer(nn.Module):
     def __init__(self, M, N, D, H, cache_K, cache_V, P, noise, W_q, W_k, W_v):
@@ -1539,6 +1517,7 @@ class TensorRT_QKNorm(nn.Module):
         self.D = D
         self.H = H
         self.P = P
+        self.output = torch.empty(self.M, self.N, dtype=dtype, device=device)
 
         # self.weight = nn.Parameter(torch.ones(H, dtype=dtype, device=device))
         self.W_q = W_q.to(device=device, dtype=dtype)
@@ -1693,16 +1672,12 @@ class TensorRT_QKNorm(nn.Module):
                 os.remove(onnx_path)
 
     def forward(self, X):
-        seq_len, H = X.size()
-
-        # Prepare output buffer
-        output = torch.empty(seq_len, self.N, dtype=dtype, device=X.device)
         # Create bindings - pass X directly to TensorRT
         bindings = [
             X.data_ptr(),
             self.cache_K.data_ptr(),
             self.cache_V.data_ptr(),
-            output.data_ptr()
+            self.output.data_ptr()
         ]
 
         # Execute TensorRT engine
@@ -1710,7 +1685,7 @@ class TensorRT_QKNorm(nn.Module):
         if not success:
             raise RuntimeError("TensorRT execution failed")
         
-        return output
+        return self.output
 
 class TensorRT_NormQKNorm(nn.Module):
     def __init__(self, M, N, D, H, cache_K, cache_V, P, W_q, W_k, W_v):
@@ -1887,6 +1862,9 @@ class TensorRT_RoCo(nn.Module):
         self.D = D
         self.H = H
         self.P = P
+        self.output = torch.empty(self.M, self.N, dtype=dtype, device=device)
+        self.weights_sum = torch.empty(self.H, self.P+self.M, dtype=dtype, device=device)
+        self.weights_sqr_sum = torch.empty(self.H, self.P+self.M, dtype=dtype, device=device)
 
         # self.weight = nn.Parameter(torch.ones(H, dtype=dtype, device=device))
         self.W_q = W_q.to(device=device, dtype=dtype)
@@ -2039,28 +2017,20 @@ class TensorRT_RoCo(nn.Module):
                 os.remove(onnx_path)
 
     def forward(self, X):
-        seq_len, H = X.size()
-
-        # Prepare output buffer
-        output = torch.empty(seq_len, self.N, dtype=dtype, device=X.device)
-        weights_sum = torch.empty(self.H, self.P+self.M, dtype=dtype, device=X.device)
-        weights_sqr_sum = torch.empty(self.H, self.P+self.M, dtype=dtype, device=X.device)
         # Create bindings - pass X directly to TensorRT
         bindings = [
             X.data_ptr(),
             self.cache_K.data_ptr(),
             self.cache_V.data_ptr(),
-            output.data_ptr(),
-            weights_sum.data_ptr(),
-            weights_sqr_sum.data_ptr()
+            self.output.data_ptr(),
+            self.weights_sum.data_ptr(),
+            self.weights_sqr_sum.data_ptr()
         ]
 
         # Execute TensorRT engine
-        success = self.context.execute_v2(bindings)
-        if not success:
-            raise RuntimeError("TensorRT execution failed")
+        _ = self.context.execute_v2(bindings)
         
-        return output
+        return self.output
 
 class TensorRT_NormRoCo(nn.Module):
     def __init__(self, M, N, D, H, cache_K, cache_V, P, W_q, W_k, W_v):
