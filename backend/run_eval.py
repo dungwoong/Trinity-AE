@@ -220,7 +220,8 @@ def main():
             trt = TensorRT_PreNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
             ti = PreNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = FlashInfer_PreNorm(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
-            ft = None
+            from flashtensor.h100_prenorm import bench_prenorm
+            ft = bench_prenorm
         case "keyformer":
             from baselines import KeyFormer, TensorRT_KeyFormer
             trt = TensorRT_KeyFormer(M, N, D, H, K_cache.clone(), V_cache.clone(), P, noise, WQ, WK, WV)
@@ -233,7 +234,8 @@ def main():
             trt = TensorRT_QKNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
             ti = QKNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = FlashInfer_QKNorm(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
-            ft = None
+            from flashtensor.h100_qknorm import bench_qknorm
+            ft = bench_qknorm
         case "roco":
             from baselines import RoCo, TensorRT_RoCo, FlashInfer_RoCo
             trt = TensorRT_RoCo(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
