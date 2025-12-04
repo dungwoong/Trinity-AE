@@ -1,8 +1,6 @@
 from codegen.convert_module import convert_ir_to_triton
 import argparse, torch, importlib.util, sys
-
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-torch.cuda.set_device(device)
+from baselines import device, dtype
 
 def main():
     parser = argparse.ArgumentParser()
@@ -22,7 +20,6 @@ def main():
     baseline = args.baseline
     use_graph = args.use_graph
     print_output = args.print_output
-    dtype = torch.float16
 
     case_file = f"./results/{target}/{target}_{model}_case{num}.txt"
     output_file = f"./results/{target}/{target}_{model}_benchmark{num}.py"
@@ -216,36 +213,46 @@ def main():
             trt = TensorRT_Vanilla(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
             ti = Vanilla(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = FlashInfer_Vanilla(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
+            from flashtensor.h100_vanilla import bench_vanilla
+            ft = bench_vanilla
         case "prenorm":
             from baselines import PreNorm, TensorRT_PreNorm, FlashInfer_PreNorm
             trt = TensorRT_PreNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
             ti = PreNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = FlashInfer_PreNorm(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
+            ft = None
         case "keyformer":
             from baselines import KeyFormer, TensorRT_KeyFormer
             trt = TensorRT_KeyFormer(M, N, D, H, K_cache.clone(), V_cache.clone(), P, noise, WQ, WK, WV)
             ti = KeyFormer(M, N, D, P, noise, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = None
+            from flashtensor.h100_kf import bench_kf
+            ft = bench_kf
         case "qknorm":
             from baselines import QKNorm, TensorRT_QKNorm, FlashInfer_QKNorm
             trt = TensorRT_QKNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
             ti = QKNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = FlashInfer_QKNorm(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
+            ft = None
         case "roco":
             from baselines import RoCo, TensorRT_RoCo, FlashInfer_RoCo
             trt = TensorRT_RoCo(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
             ti = RoCo(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
             fi = None
+            from flashtensor.h100_roco import bench_roco
+            ft = bench_roco
         case "gqa":
             from baselines import Vanilla_GQA, TensorRT_Vanilla_GQA
             trt = TensorRT_Vanilla_GQA(M, N, D, H, N//num_group, K_cache.clone(), V_cache.clone(), P, WQ, WK_gqa, WV_gqa)
             ti = Vanilla_GQA(M, N, D, P, N//num_group, K_cache.clone(), V_cache.clone(), WQ, WK_gqa, WV_gqa)
             fi = None
+            ft = None
         case "ffn":
             from baselines import FFN, TensorRT_FFN
             trt = TensorRT_FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2)
             ti = FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2)
             fi = None
+            ft = None
 
     # --------------- Trinity ---------------------
     print("="*50)
@@ -439,7 +446,7 @@ def main():
             print(out)
     
     # ----------------- FlashInfer ---------------------
-    if len(baseline) == 0 or "flashinfer" in baseline and not fi is None:
+    if not fi is None and len(baseline) == 0 or "flashinfer" in baseline:
         print("="*50)
         print(f"Starting FlashInfer {target}...")
         
@@ -466,6 +473,18 @@ def main():
         
         if print_output:
             print(out)
+    
+    # ----------------- FlashTensor ---------------------
+    if not ft is None and len(baseline) == 0 or "flashtensor" in baseline:
+        print("="*50)
+        print(f"Starting FlashTensor {target}...")
+
+        if use_graph:
+            print(f"FlashTensor with CUDA Graph: 0ms")
+        else:
+            time = ft(model, M, N, P, D, H, device, dtype)
+            print(f"FlashTensor without CUDA Graph: {time} ms")
+
 
 if __name__ == "__main__":
     main()
