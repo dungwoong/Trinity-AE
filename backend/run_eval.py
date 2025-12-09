@@ -9,7 +9,6 @@ def main():
     parser.add_argument("--t", type=str, default="vanilla", help="Benchmark type")
     parser.add_argument("--n", type=int, default=0, help="Case number for IR")
     parser.add_argument("--baseline", nargs="*", default=[], help="List of baselines")
-    parser.add_argument("--use_graph", action="store_true")
     parser.add_argument("--print_output", action="store_true")
     args = parser.parse_args()
 
@@ -18,7 +17,6 @@ def main():
     model = args.m
     target = args.t
     baseline = args.baseline
-    use_graph = args.use_graph
     print_output = args.print_output
 
     case_file = f"./results/{target}/{target}_{model}_case{num}.txt"
@@ -126,14 +124,9 @@ def main():
     if torch.cuda.is_available():
         torch.cuda.manual_seed(42)
     
-    # Initalize tensors
+    # --------------- Init for Attention ---------------------
     std = 0.01
     X = torch.randn((M, N), device=device, dtype=dtype) * std
-    X_padded = torch.zeros((16, N), device=device, dtype=dtype) * std
-    X_padded[0:M, :] = X
-
-    X2 = torch.zeros((M,), device=device, dtype=dtype) * std
-    X_norm = torch.zeros((M, N), device=device, dtype=dtype) * std
     
     WQ = torch.randn((N, N), device=device, dtype=dtype) * std
     WK = torch.randn((N, N), device=device, dtype=dtype) * std
@@ -142,70 +135,55 @@ def main():
     WK_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
     WV_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
 
-    Q1 = torch.zeros((M, N), device=device, dtype=dtype) * std
-    K1 = torch.zeros((M, N), device=device, dtype=dtype) * std
-    V1 = torch.zeros((M, N), device=device, dtype=dtype) * std
-
-    Q2 = torch.zeros((M, H, D), device=device, dtype=dtype) * std
-    K2 = torch.zeros((M, H, D), device=device, dtype=dtype) * std
-    V2 = torch.zeros((M, H, D), device=device, dtype=dtype) * std
-    
     K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
     V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
 
     K_cache_flashinfer = K_cache.clone().transpose(0, 1).contiguous()
     V_cache_flashinfer = V_cache.clone().transpose(0, 1).contiguous()
 
-    K_cache_gqa = torch.randn((H//num_group, P+M, D), device=device, dtype=dtype) * std
-    V_cache_gqa = torch.randn((H//num_group, P+M, D), device=device, dtype=dtype) * std
-
-    Q = torch.zeros((H, M, D), device=device, dtype=dtype) * std
-    K = torch.zeros((H, M, D), device=device, dtype=dtype) * std
-    V = torch.zeros((H, M, D), device=device, dtype=dtype) * std
-
-    O = torch.zeros((H, M, D), device=device, dtype=dtype) * std
-    O1 = torch.zeros((M, H, D), device=device, dtype=dtype) * std
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
-    C = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_exp = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_div = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_sum = torch.zeros((H, M), device=device, dtype=dtype) * std
-    
-    noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
-    C_perturb = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_div_perturb = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_sum_perturb = torch.zeros((H, M), device=device, dtype=dtype) * std
-    C_out = torch.zeros((H, P+M), device=device, dtype=dtype) * std
+    # --------------- Additional init for RoCo ---------------------
+    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32) * std
     C_out1 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
     C_out2 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
 
-    Q_norm = torch.zeros((H, M, D), device=device, dtype=dtype) * std
-    K_norm = torch.zeros((H, M, D), device=device, dtype=dtype) * std
+    # --------------- Additional init for KeyFormer ---------------------
+    C = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
+    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32) * std
+    C_out = torch.zeros((H, P+M), device=device, dtype=dtype) * std
+    noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
 
+    # --------------- Init for FFN ---------------------
     std = 0.001
     if target == "ffn":
         O2 = O2
     else:
         O2 = torch.randn(M, N, dtype=dtype, device=device) * std
-    WO = torch.randn(N, N, dtype=dtype, device=device) * std
-    attn_O1 = torch.zeros(M, N, dtype=dtype, device=device)
-    attn_O2 = torch.zeros(M, N, dtype=dtype, device=device)
-    attn_O3 = torch.zeros(M, dtype=dtype, device=device)
-    attn_O_norm = torch.zeros(M, N, dtype=dtype, device=device)
-    WFF1a = torch.randn(N, N4, dtype=dtype, device=device) * std
-    WFF1b = torch.randn(N, N4, dtype=dtype, device=device) * std
-    FF1a = torch.zeros(M, N4, dtype=dtype, device=device)
-    FF1b = torch.zeros(M, N4, dtype=dtype, device=device)
-    FF1b_silu = torch.zeros(M, N4, dtype=dtype, device=device)
     FF1 = torch.zeros(M, N4, dtype=dtype, device=device)
     FF2 = torch.zeros(M, N4, dtype=dtype, device=device)
+    WFF1a = torch.randn(N, N4, dtype=dtype, device=device) * std
+    WFF1b = torch.randn(N, N4, dtype=dtype, device=device) * std
     WFF2 = torch.randn(N4, N, dtype=dtype, device=device) * std
+    WO = torch.randn(N, N, dtype=dtype, device=device) * std
+    attn_O2 = torch.zeros(M, N, dtype=dtype, device=device)
+
 
 
     out = O2.clone()
     ITER = 1000
+
+    if option == 0:
+        with open(case_file, "r") as f:
+            ir = f.read().strip()
+            triton_code = convert_ir_to_triton(ir, tensor_shapes, constants)
+
+            with open(output_file, "w") as f:
+                f.write(triton_code)
+            
+            print("="*50)
+            print("Triton kernel generated successfully!")
+        return
 
     match target:
         case "vanilla":
@@ -284,13 +262,13 @@ def main():
         tensor_params = getattr(module, 'TENSOR_PARAMS')
         block_params = getattr(module, 'BLOCK_PARAMS')
         tensors = {
-            'X': X, 'X2': X2, 'X_norm': X_norm, 'WQ': WQ, 'WK': WK, 'WV': WV, 'Q1': Q1, 'K1': K1, 'V1': V1,
-            'Q2': Q2, 'K2': K2, 'V2': V2, 'K_cache': K_cache, 'V_cache': V_cache, 'Q': Q, 'K': K, 'V': V,
-            'O': O, 'O1': O1, 'O2': O2, 'C': C, 'C_exp': C_exp, 'C_div': C_div, 'C_sum': C_sum, 'noise': noise,
-            'C_perturb': C_perturb, 'C_exp_perturb': C_exp_perturb, 'C_div_perturb': C_div_perturb, 'C_sum_perturb': C_sum_perturb,
-            'C_out': C_out, 'C_out1': C_out1, 'C_out2': C_out2, 'Q_norm': Q_norm, 'K_norm': K_norm,
-            'X_padded': X_padded, 'WO': WO, 'attn_O1': attn_O1, 'attn_O2': attn_O2, 'attn_O3': attn_O3,
-            'attn_O_norm': attn_O_norm, 'WFF1a': WFF1a, 'WFF1b': WFF1b, 'FF1a': FF1a, 'FF1b': FF1b, 'FF1b_silu': FF1b_silu,
+            'X': X, 'WQ': WQ, 'WK': WK, 'WV': WV,
+            'K_cache': K_cache, 'V_cache': V_cache,
+            'O2': O2, 'C': C, 'C_exp': C_exp, 'noise': noise,
+            'C_exp_perturb': C_exp_perturb,
+            'C_out': C_out, 'C_out1': C_out1, 'C_out2': C_out2,
+            'WO': WO, 'attn_O2': attn_O2,
+            'WFF1a': WFF1a, 'WFF1b': WFF1b,
             'FF1': FF1, 'FF2': FF2, 'WFF2': WFF2,
         }
         blocks = {
@@ -308,44 +286,19 @@ def main():
             else:
                 raise ValueError(f"Unknown block parameter: {param}")
 
-        if use_graph:
-            stream = torch.cuda.Stream(device)
-            with torch.cuda.stream(stream):
-                for _ in range(10):
-                    forward(*args)
-            stream.synchronize()
+        for _ in range(10):
+            forward(*args)
+        
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for _ in range(ITER):
+            forward(*args)
+        end_event.record()
+        torch.cuda.synchronize()
 
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.stream(stream):
-                with torch.cuda.graph(graph, stream=stream):
-                    forward(*args)
-            stream.synchronize()
-
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            with torch.cuda.stream(stream):
-                start_event.record()
-                for _ in range(ITER):
-                    graph.replay()
-                end_event.record()
-            stream.synchronize()
-
-            time = start_event.elapsed_time(end_event) / ITER
-            print(f"Trinity with CUDA Graph: {time} ms")
-        else:
-            for _ in range(10):
-                forward(*args)
-            
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            for _ in range(ITER):
-                forward(*args)
-            end_event.record()
-            torch.cuda.synchronize()
-
-            time = start_event.elapsed_time(end_event) / ITER
-            print(f"Trinity without CUDA Graph: {time} ms")
+        time = start_event.elapsed_time(end_event) / ITER
+        print(f"Trinity without CUDA Graph: {time} ms")
         
         if print_output:
             print(O2)
@@ -361,24 +314,22 @@ def main():
             inputs = (X,)
 
         trt.half()
-        if use_graph:
-            print(f"TensorRT with CUDA Graph: 0 ms")
-        else:
-            with torch.no_grad():
-                for _ in range(10):
-                    out = trt(*inputs)
-                torch.cuda.synchronize()
+        
+        with torch.no_grad():
+            for _ in range(10):
+                out = trt(*inputs)
+            torch.cuda.synchronize()
 
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record()
-                for _ in range(ITER):
-                    _ = trt(*inputs)
-                end_event.record()
-                torch.cuda.synchronize()
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            for _ in range(ITER):
+                _ = trt(*inputs)
+            end_event.record()
+            torch.cuda.synchronize()
 
-                time = start_event.elapsed_time(end_event) / ITER
-                print(f"TensorRT without CUDA Graph: {time} ms")
+            time = start_event.elapsed_time(end_event) / ITER
+            print(f"TensorRT without CUDA Graph: {time} ms")
         
         if print_output:
             print(out)
@@ -394,24 +345,22 @@ def main():
             inputs = (X,)
 
         ti = ti.eval()
-        if use_graph:
-            print(f"Pytorch Eager with CUDA Graph: 0 ms")
-        else:
-            with torch.no_grad():
-                for _ in range(10):
-                    out = ti(*inputs)
-                torch.cuda.synchronize()
+        
+        with torch.no_grad():
+            for _ in range(10):
+                out = ti(*inputs)
+            torch.cuda.synchronize()
 
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record()
-                for _ in range(ITER):
-                    _ = ti(*inputs)
-                end_event.record()
-                torch.cuda.synchronize()
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            for _ in range(ITER):
+                _ = ti(*inputs)
+            end_event.record()
+            torch.cuda.synchronize()
 
-                time = start_event.elapsed_time(end_event) / ITER
-                print(f"Pytorch Eager without CUDA Graph: {time} ms")
+            time = start_event.elapsed_time(end_event) / ITER
+            print(f"Pytorch Eager without CUDA Graph: {time} ms")
         
         if print_output:
             print(out)
@@ -426,23 +375,22 @@ def main():
         else:
             inputs = (X,)
 
-        modes = ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
-        for mode in modes:
-            compiled_model = torch.compile(ti, backend="inductor", mode=mode, fullgraph=True)
-            for _ in range(10):
-                out = compiled_model(*inputs)
-            torch.cuda.synchronize()
+        mode = "max-autotune-no-cudagraphs"
+        compiled_model = torch.compile(ti, backend="inductor", mode=mode, fullgraph=True)
+        for _ in range(10):
+            out = compiled_model(*inputs)
+        torch.cuda.synchronize()
 
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            for _ in range(ITER):
-                _ = compiled_model(*inputs)
-            end_event.record()
-            torch.cuda.synchronize()
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for _ in range(ITER):
+            _ = compiled_model(*inputs)
+        end_event.record()
+        torch.cuda.synchronize()
 
-            time = start_event.elapsed_time(end_event) / ITER
-            print(f"Torch Inductor {mode}: {time} ms")
+        time = start_event.elapsed_time(end_event) / ITER
+        print(f"Torch Inductor {mode}: {time} ms")
         
         if print_output:
             print(out)
@@ -454,24 +402,22 @@ def main():
         
         fi.half()
         fi = fi.eval()
-        if use_graph:
-            print(f"FlashInfer with CUDA Graph: 0 ms")
-        else:
-            with torch.no_grad():
-                for _ in range(10):
-                    out = fi(X)
-                torch.cuda.synchronize()
+        
+        with torch.no_grad():
+            for _ in range(10):
+                out = fi(X)
+            torch.cuda.synchronize()
 
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record()
-                for _ in range(ITER):
-                    _ = fi(X)
-                end_event.record()
-                torch.cuda.synchronize()
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            for _ in range(ITER):
+                _ = fi(X)
+            end_event.record()
+            torch.cuda.synchronize()
 
-                time = start_event.elapsed_time(end_event) / ITER
-                print(f"FlashInfer without CUDA Graph: {time} ms")
+            time = start_event.elapsed_time(end_event) / ITER
+            print(f"FlashInfer without CUDA Graph: {time} ms")
         
         if print_output:
             print(out)
@@ -481,11 +427,9 @@ def main():
         print("="*50)
         print(f"Starting FlashTensor {target}...")
 
-        if use_graph:
-            print(f"FlashTensor with CUDA Graph: 0ms")
-        else:
-            time = ft(model, M, N, P, D, H, device, dtype)
-            print(f"FlashTensor without CUDA Graph: {time} ms")
+        
+        time = ft(model, M, N, P, D, H, device, dtype)
+        print(f"FlashTensor without CUDA Graph: {time} ms")
 
 
 if __name__ == "__main__":
