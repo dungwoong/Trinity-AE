@@ -1,9 +1,8 @@
 from enum import Enum
 
 class NodeType(Enum):
-    LOOP = "loop"       # loop init for generating backward IR (will be converted to ploop/sloop later)
-    PLOOP = "ploop"     # Parallel loop
-    SLOOP = "sloop"     # Sequential loop
+    PLOOP = "ploop"  # Parallel loop
+    SLOOP = "sloop"  # Sequential loop
     INPUT = "input"
     OUTPUT = "output"
     TILE = "tile"
@@ -28,7 +27,6 @@ class NodeType(Enum):
     NUM = "num"
     VAR = "var"
     ELEM = "elem"  # Element-wise indexing
-    TRANSPOSE = "transpose"  # 2D matrix transpose
     PERMUTE3 = "permute3"  # 3D permutation
     SQUEEZE = "squeeze"  # Remove dimension
     UNSQUEEZE = "unsqueeze"  # Add dimension

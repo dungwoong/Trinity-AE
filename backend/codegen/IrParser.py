@@ -122,7 +122,6 @@ class IRParser:
             'bcast': NodeType.BCAST,
             'dummy': NodeType.DUMMY,
             'elem': NodeType.ELEM,
-            'transpose': NodeType.TRANSPOSE,
             'permute3': NodeType.PERMUTE3,
             'squeeze': NodeType.SQUEEZE,
             'unsqueeze': NodeType.UNSQUEEZE,
