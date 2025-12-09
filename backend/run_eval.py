@@ -62,58 +62,28 @@ def main():
     
     tensor_shapes = {
         'X': ('M', 'N'),
-        'X2': ('M',),
-        'X_norm': ('M', 'N'),
 
         'WQ': ('N', 'N'),
         'WK': ('N', 'N'),
         'WV': ('N', 'N'),
 
-        'Q1': ('M', 'N'),
-        'K1': ('M', 'N'),
-        'V1': ('M', 'N'),
-        
-        'Q2': ('M', 'H', 'D'),
-        'K2': ('M', 'H', 'D'),
-        'V2': ('M', 'H', 'D'),
-
         'K_cache': ('H', 'P+M', 'D'),
         'V_cache': ('H', 'P+M', 'D'),
 
-        'Q': ('H', 'M', 'D'),
-        'K': ('H', 'M', 'D'),
-        'V': ('H', 'M', 'D'),
-
-        'O': ('H', 'M', 'D'),
-        'O1': ('M', 'H', 'D'),
         'O2': ('M', 'N'),
 
         'C': ('H', 'M', 'P+M'),
         'C_exp': ('H', 'M', 'P+M'),
-        'C_div': ('H', 'M', 'P+M'),
-        'C_sum': ('H', 'M'),
         'noise': ('H', 'M', 'P+M'),
-        'C_perturb': ('H', 'M', 'P+M'),
         'C_exp_perturb': ('H', 'M', 'P+M'),
-        'C_sum_perturb': ('H', 'M'),
-        'C_div_perturb': ('H', 'M', 'P+M'),
         'C_out': ('H', 'P+M'),
         'C_out1': ('H', 'P+M'),
         'C_out2': ('H', 'P+M'),
 
-        'Q_norm': ('H', 'M', 'D'),
-        'K_norm': ('H', 'M', 'D'),
-
         'WO': ('N', 'N'),
-        'attn_O1': ('M', 'N'),
         'attn_O2': ('M', 'N'),
-        'attn_O3': ('M'),
-        'attn_O_norm': ('M', 'N'),
         'WFF1a': ('N', 'N4'),
         'WFF1b': ('N', 'N4'),
-        'FF1a': ('M', 'N4'),
-        'FF1b': ('M', 'N4'),
-        'FF1b_silu': ('M', 'N4'),
         'FF1': ('M', 'N4'),
         'FF2': ('M', 'N'),
         'WFF2': ('N4', 'N'),
