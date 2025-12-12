@@ -85,3 +85,5 @@ Test results are saved in the `expressions/` directory:
 - `expressions/semi/*.json`: Intermediate results (semi-extracted expressions)
 - `expressions/*.txt`: Final processed expression list
 - `backend/evaluation/{method}/*.txt`: Pre-generated expression lists for profile execution
+
+Use `backend/profile/{method}_{model}_benchmark.py` to find the optimal IR from the generated expression list. See `backend/README.md` for details.
