@@ -136,14 +136,14 @@ def main():
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
     # --------------- Additional init for RoCo ---------------------
-    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32) * std
+    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
     C_out1 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
     C_out2 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
 
     # --------------- Additional init for KeyFormer ---------------------
-    C = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32) * std
-    C_out = torch.zeros((H, P+M), device=device, dtype=dtype) * std
+    C = torch.zeros((H, M, P+M), device=device, dtype=dtype)
+    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
+    C_out = torch.zeros((H, P+M), device=device, dtype=dtype)
     noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
 
     # --------------- Init for FFN ---------------------
@@ -269,6 +269,7 @@ def main():
             'WO': WO, 'attn_O2': attn_O2,
             'WFF1a': WFF1a, 'WFF1b': WFF1b,
             'FF1': FF1, 'FF2': FF2, 'WFF2': WFF2,
+            'C_sum': C_sum, 'C_div': C_div
         }
         blocks = {
             'block_k': 0, 'block_n': 0, 'block_p': 0

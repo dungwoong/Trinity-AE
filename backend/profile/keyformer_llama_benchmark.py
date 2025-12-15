@@ -588,7 +588,7 @@ def print_comprehensive_report(all_results, top_k):
 def main():
     """Main function to run Attacc IR benchmarks."""
     # Configuration
-    IR_FILE = "./evaluation/prenorm/prenorm_llama_cost6_kern2.txt"
+    IR_FILE = "./evaluation/prenorm/prenorm_llama_cost6_kern1.txt"
     OUTPUT_FILE = "./evaluation/prenorm/prenorm_llama.json"
     MODEL_CONFIG_FILE = "./model_configs.json"
     START_EXPRESSIONS = 0

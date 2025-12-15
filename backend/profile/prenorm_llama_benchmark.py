@@ -133,9 +133,11 @@ class RMSBenchmark:
         """Create random test tensors for benchmarking."""
         self.tensors = {}
         for name, shape in self.tensor_shapes.items():
-            if name in ['C', 'C_exp', 'C_sum', 'K', 'K1', 'K2', 'O', 'O1', 'Q', 'Q1', 'Q2', 'V', 'V1', 'V2']:  # Output and intermediate tensors
+            if name in ['C', 'C_sum', 'K', 'K1', 'K2', 'O', 'O1', 'Q', 'Q1', 'Q2', 'V', 'V1', 'V2']:  # Output and intermediate tensors
                 # Initialize to zero since they're used as accumulators or outputs
                 self.tensors[name] = torch.zeros(shape, dtype=torch.float16, device=self.device)
+            elif name in ['C_exp', 'C_div']:
+                self.tensors[name] = torch.zeros(shape, dtype=torch.float32, device=self.device)
             else:  # Input tensors
                 self.tensors[name] = torch.randn(shape, dtype=torch.float16, device=self.device).clamp(-1, 1)*0.01
     
@@ -586,7 +588,7 @@ def print_comprehensive_report(all_results, top_k):
 def main():
     """Main function to run Attacc IR benchmarks."""
     # Configuration
-    IR_FILE = "./evaluation/prenorm/prenorm_llama_cost6_kern2.txt"
+    IR_FILE = "./evaluation/prenorm/prenorm_llama_cost6_kern1.txt"
     OUTPUT_FILE = "./evaluation/prenorm/prenorm_llama.json"
     MODEL_CONFIG_FILE = "./model_configs.json"
     START_EXPRESSIONS = 0

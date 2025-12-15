@@ -2580,9 +2580,74 @@ def {kernel_name}(
         
         # Restore cross_sloop_memory_tensors
         self.cross_sloop_memory_tensors = saved_cross_sloop
-        
+
+        # Find tensors stored in this sloop that are used in OTHER sloops.
+        # This triggers Triton's OptimizeThreadLocality "loopResult.hasOneUse()" assertion.
+        # We add materialization (+ 0.0) only for such tensors to break the multi-loop use pattern.
+        stored_in_this_sloop = set()
+        if len(node.children) > 4:
+            body = node.children[4]
+            def find_stored_tensors(n: ASTNode):
+                if n.node_type == NodeType.STORE:
+                    tensor_node = n.children[0]
+                    if tensor_node.node_type == NodeType.TENSOR:
+                        for child in tensor_node.children:
+                            if child.node_type == NodeType.VAR:
+                                if child.value in self.intermediate_tensors:
+                                    stored_in_this_sloop.add(child.value)
+                for child in n.children:
+                    if isinstance(child, ASTNode) and child.node_type != NodeType.SLOOP:
+                        find_stored_tensors(child)
+            find_stored_tensors(body)
+
+        # Count how many distinct sloops use each tensor
+        def count_sloops_using_tensor(tensor_name: str) -> int:
+            """Count how many distinct sloops load this tensor"""
+            sloop_count = [0]
+            def check_sloop(n: ASTNode, current_sloop_id: int = 0):
+                if n.node_type == NodeType.SLOOP:
+                    # New sloop - increment ID and check inside
+                    new_id = current_sloop_id + 1
+                    uses_tensor = [False]
+                    def check_loads(inner: ASTNode):
+                        if inner.node_type == NodeType.LOAD:
+                            if len(inner.children) > 0:
+                                t_node = inner.children[0]
+                                if t_node.node_type == NodeType.TENSOR:
+                                    for child in t_node.children:
+                                        if child.node_type == NodeType.VAR and child.value == tensor_name:
+                                            uses_tensor[0] = True
+                                            return
+                        for child in inner.children:
+                            if isinstance(child, ASTNode) and child.node_type != NodeType.SLOOP:
+                                check_loads(child)
+                    # Check if this sloop uses the tensor (excluding nested sloops)
+                    if len(n.children) > 4:
+                        check_loads(n.children[4])
+                    if uses_tensor[0]:
+                        sloop_count[0] += 1
+                    # Continue checking nested/sibling sloops
+                    for child in n.children:
+                        if isinstance(child, ASTNode):
+                            check_sloop(child, new_id)
+                else:
+                    for child in n.children:
+                        if isinstance(child, ASTNode):
+                            check_sloop(child, current_sloop_id)
+            if hasattr(self, 'current_ast') and self.current_ast:
+                check_sloop(self.current_ast)
+            return sloop_count[0]
+
+        # Add materialization only for tensors used in multiple sloops
+        for tensor in sorted(stored_in_this_sloop):
+            if hasattr(self, 'cross_sloop_memory_tensors') and tensor in self.cross_sloop_memory_tensors:
+                continue
+            # If used in 2+ distinct sloops, needs materialization
+            if count_sloops_using_tensor(tensor) >= 2:
+                code += f"{indent}{tensor} = {tensor} + 0.0\n"
+
         return code
-    
+
     def _generate_seq(self, node: ASTNode) -> str:
         """Generate sequence of operations (for nested seq nodes only)"""
         code = ""
