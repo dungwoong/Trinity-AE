@@ -121,17 +121,14 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--n", type=int, default=0, help="Case number to convert")
 parser.add_argument("--m", type=str, default="", help="Input model type")
+parser.add_argument("--t", type=str, help="Type architecture")
 args = parser.parse_args()
 
-# case_file = f"{os.getcwd()}/benchmark_{args.m}/{args.m}_case{args.n}.txt"
-# case_file = f"./evaluation/vanilla/vanilla_falcon_case{args.n}.txt"
-
-case_file = f"./evaluation/prenorm/prenorm_llama_case1475.txt"
+case_file = f"./results/{args.t}/{args.t}_{args.m}_case{args.n}.txt"
 
 with open(case_file, "r") as f:
     input_code = f.read().strip()
 
-# 함수를 호출하여 코드를 변환
 formatted_output = format_lisp_with_rules(input_code)
 
 with open(case_file, "w") as f:

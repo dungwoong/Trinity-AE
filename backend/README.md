@@ -136,3 +136,26 @@ python profile/prenorm_llama_benchmark.py --all
 | Falcon | 16 | 64  | 4544 | 71  |
 
 You can modify tensor sizes by editing `model_configs.json`.
+
+## Appendix
+
+### IR Formatting Helper
+
+`format.py` is a helper script that formats LISP-style IR expressions for better readability.
+
+```bash
+python format.py [options]
+
+# Options:
+#   --n : Case number to format
+#   --m : Model type (llama, falcon)
+#   --t : Architecture type (vanilla, prenorm, qknorm, keyformer, roco, ffn)
+```
+
+#### Example
+```bash
+# Format llama vanilla IR case 946
+python format.py --n 946 --m llama --t vanilla
+```
+
+The formatted output will overwrite the original file at `results/{t}/{t}_{m}_case{n}.txt`.
