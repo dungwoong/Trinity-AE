@@ -124,9 +124,6 @@ def main():
     WK = torch.randn((N, N), device=device, dtype=dtype) * std
     WV = torch.randn((N, N), device=device, dtype=dtype) * std
 
-    WK_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
-    WV_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
-
     K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
     V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
 
@@ -221,12 +218,6 @@ def main():
             fi = None
             from flashtensor.h100_roco import bench_roco
             ft = bench_roco
-        case "gqa":
-            from baselines import Vanilla_GQA, TensorRT_Vanilla_GQA
-            trt = TensorRT_Vanilla_GQA(M, N, D, H, N//num_group, K_cache.clone(), V_cache.clone(), P, WQ, WK_gqa, WV_gqa, device, dtype)
-            ti = Vanilla_GQA(M, N, D, P, N//num_group, K_cache.clone(), V_cache.clone(), WQ, WK_gqa, WV_gqa, device, dtype)
-            fi = None
-            ft = None
         case "ffn":
             from baselines import FFN, TensorRT_FFN
             trt = TensorRT_FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2, device=device, dtype=dtype)
@@ -269,7 +260,6 @@ def main():
             'WO': WO, 'attn_O2': attn_O2,
             'WFF1a': WFF1a, 'WFF1b': WFF1b,
             'FF1': FF1, 'FF2': FF2, 'WFF2': WFF2,
-            'C_sum': C_sum, 'C_div': C_div
         }
         blocks = {
             'block_k': 0, 'block_n': 0, 'block_p': 0
