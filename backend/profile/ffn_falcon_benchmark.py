@@ -540,6 +540,23 @@ def print_comprehensive_report(all_results, top_k):
         print(f"   Tensor Config: M={result.tensor_config['M']}, N={result.tensor_config['N']}")
         print(f"   Expression: {result.ir_expression[:100]}...")
 
+def save_top_k_results(top_results, output_file):
+    """Save top k results to a JSON file."""
+    data = []
+    for rank, result in enumerate(top_results, 1):
+        data.append({
+            'rank': rank,
+            'ir_id': result.ir_id,
+            'execution_time_ms': result.execution_time,
+            'tensor_config': result.tensor_config,
+            'ir_expression': result.ir_expression
+        })
+
+    with open(output_file, 'w') as f:
+        json.dump(data, f, indent=2)
+
+    print(f"\nTop {len(data)} results saved to: {output_file}")
+
 def main():
     """Main function to run Attacc IR benchmarks."""
     # Configuration
@@ -603,7 +620,9 @@ def main():
     print(f"\nAll results saved to: {args.output}")
     
     # Print comprehensive report
-    print_comprehensive_report(all_results, args.topk)
+    final_result = print_comprehensive_report(all_results, args.topk)
+    final_output = args.output.replace('.json', '_topk.json')
+    save_top_k_results(final_result, final_output)
 
 if __name__ == "__main__":
     main()

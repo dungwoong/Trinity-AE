@@ -73,6 +73,10 @@ python run_eval.py --o 0 --m llama --t prenorm --n 579
 # Run benchmark with baseline comparison (torch inductor)
 python run_eval.py --o 2 --m llama --t vanilla --n 946 --baseline inductor
 ```
+### Input & Output
+- Input IR expression file: `results/{method}/{method}_{model}_case{n}.txt`
+- Output generated Triton code: `results/{method}/{method}_{model}_benchmark{n}.py`
+- Benchmark results will print to stdout
 
 ### Run for figure 4
 
@@ -126,14 +130,7 @@ python profile/ffn_falcon_benchmark.py --start 500 --end --device 1
 python profile/prenorm_llama_benchmark.py --all
 ```
 
-## Input/Output
-
-### Input
-- IR expression file: `results/{method}/{method}_{model}_case{n}.txt`
-
-### Output
-- Generated Triton code: `results/{method}/{method}_{model}_benchmark{n}.py`
-- Benchmark results printed to stdout
+- You can check top-k kernel result in `{method}_{model}_{topk}.json` in `evaluation` directory.
 
 ## Model Configurations
 
