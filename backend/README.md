@@ -84,9 +84,17 @@ python run_eval.py --o 2 --m llama --t vanilla --n 946 --baseline inductor
 
 ### Run for figure5&6
 ```bash
+# Run all benchmarks
 ./scripts/evaluate56.sh
+# Run single test
+python run_figures56.py [options]
+
+# Options:
+#   --m        : Model type (llama, falcon)
+#   --t        : Architecture (vanilla, prenorm, qknorm, keyformer, roco, ffn)
+#   --n        : Case number for IR
+#   --d        : CUDA device number (default: 0)
 ```
-You can also run with `python run_figure56.py` for the single test
 
 ## IR List Profiling
 
@@ -97,8 +105,6 @@ Profile multiple IR expressions from a file to find the best performing kernels.
 python profile/{method}_{model}_benchmark.py [options]
 
 # Options:
-#   --ir      : Path to the IR expressions file
-#   --output  : Path to save benchmark results (JSON)
 #   --start   : Start from specific test case ID (default: 0)
 #   --num     : Number of expressions to benchmark (default: 10)
 #   --end     : Run from start ID to the last test case

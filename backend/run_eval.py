@@ -3,7 +3,7 @@ import argparse, torch, importlib.util, sys, json
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--o", type=int, default=0, help="0 only convert, 1 only test, 2 both convert and test")
+    parser.add_argument("--o", type=int, default=2, help="0 only convert, 1 only test, 2 both convert and test")
     parser.add_argument("--m", type=str, default="llama", help="Input model type")
     parser.add_argument("--t", type=str, default="vanilla", help="Benchmark type")
     parser.add_argument("--n", type=int, default=0, help="Case number for IR")
