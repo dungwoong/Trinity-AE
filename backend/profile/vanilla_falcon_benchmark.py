@@ -254,38 +254,27 @@ class FalconVanillaBench:
                     else:
                         raise ValueError(f"Unknown tensor parameter: {param}")
             
-            stream = torch.cuda.Stream(self.device)
             # First call to trigger autotune (not counted in warmup)
             kernel_fn(*args)
             torch.cuda.synchronize()
-            
+
             # To see autotune results, run with:
             # TRITON_PRINT_AUTOTUNING=1 python ffn_benchmark.py
-            
-            # Triton Warmup - now using the best configuration from autotune
-            with torch.cuda.stream(stream):
-                for _ in range(warmup_runs):
-                    kernel_fn(*args)
-            stream.synchronize()
 
-            # CUDA Graph Warmup
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.stream(stream):
-                with torch.cuda.graph(graph, stream=stream):
-                    kernel_fn(*args)
-            # Synchronize before timing
-            stream.synchronize()
-            
+            # Warmup runs - now using the best configuration from autotune
+            for _ in range(warmup_runs):
+                kernel_fn(*args)
+            torch.cuda.synchronize()
+
             # Benchmark runs
             start_event = torch.cuda.Event(enable_timing=True)
             end_event = torch.cuda.Event(enable_timing=True)
 
-            with torch.cuda.stream(stream):
-                start_event.record()
-                for _ in range(benchmark_runs):
-                    graph.replay()
-                end_event.record()
-            stream.synchronize()
+            start_event.record()
+            for _ in range(benchmark_runs):
+                kernel_fn(*args)
+            end_event.record()
+            torch.cuda.synchronize()
             
             # Return average time in milliseconds
             avg_time = (start_event.elapsed_time(end_event)) / benchmark_runs

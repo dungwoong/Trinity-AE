@@ -16,9 +16,10 @@ backend/
 │   ├── AstNode.py          # AST node definitions
 │   └── NodeType.py         # Node type enums
 ├── evaluation/             # IR list & profiled results
+├── figure67/               # Data for figure6 & 7
 ├── scripts/                # Evaluation scripts
 │   ├── evaluate_all.sh     # Run all benchmarks
-│   └── evaluate_figure56.sh
+│   └── evaluate67.sh
 ├── profile/                # Profile IR list & find optimal
 ├── results/                # Generated benchmark results
 ├── run_eval.py             # Main evaluation entry point
@@ -39,6 +40,60 @@ Key dependencies:
 - CUDA 12.x
 
 ## Usage
+
+### Run for figure 4
+
+```bash
+# Run all benchmarks
+# GPU: 5090, A100, H100
+./scripts/evaluate_all.sh {GPU}
+```
+
+### Run for figure6&7
+```bash
+# Run all benchmarks
+./scripts/evaluate67.sh
+# Run single test
+python run_figures67.py [options]
+
+# Options:
+#   --m        : Model type (llama, falcon)
+#   --t        : Architecture (vanilla, prenorm, qknorm, keyformer, roco, ffn)
+#   --n        : Case number for IR
+#   --d        : CUDA device number (default: 0)
+```
+
+## IR List Profiling
+
+Profile multiple IR expressions from a file to find the best performing kernels. Pre-generated IR expression files from the optimizer are available in `evaluation/{architecture}/` for each architecture and model.
+
+### Usage
+```bash
+python profile/{method}_{model}_benchmark.py [options]
+
+# Options:
+#   --start   : Start from specific test case ID (default: 0)
+#   --num     : Number of expressions to benchmark (default: 10)
+#   --end     : Run from start ID to the last test case
+#   --device  : CUDA device number (default: 0)
+#   --topk    : Number of top kernels to report (default: 5)
+#   --all     : Profiling all cases in the IR expressions file
+```
+
+### Examples
+```bash
+# Profile 512 IR expressions starting from ID 0
+python profile/vanilla_llama_benchmark.py --num 512 --device 0
+
+# Profile from ID 500 to the end
+python profile/ffn_falcon_benchmark.py --start 500 --end --device 1
+
+# Profile all IR expressions
+# Please use this command to find the best IR
+python profile/prenorm_llama_benchmark.py --all
+```
+
+- You can check top-k kernel result in `{method}_{model}_{topk}.json` in `evaluation` directory.
 
 ### Convert IR to Triton and Run Benchmark
 
@@ -77,60 +132,6 @@ python run_eval.py --o 2 --m llama --t vanilla --n 946 --baseline inductor
 - Input IR expression file: `results/{method}/{method}_{model}_case{n}.txt`
 - Output generated Triton code: `results/{method}/{method}_{model}_benchmark{n}.py`
 - Benchmark results will print to stdout
-
-### Run for figure 4
-
-```bash
-# Run all benchmarks
-# GPU: 5090, A100, H100
-./scripts/evaluate_all.sh {GPU}
-```
-
-### Run for figure5&6
-```bash
-# Run all benchmarks
-./scripts/evaluate56.sh
-# Run single test
-python run_figures56.py [options]
-
-# Options:
-#   --m        : Model type (llama, falcon)
-#   --t        : Architecture (vanilla, prenorm, qknorm, keyformer, roco, ffn)
-#   --n        : Case number for IR
-#   --d        : CUDA device number (default: 0)
-```
-
-## IR List Profiling
-
-Profile multiple IR expressions from a file to find the best performing kernels. Pre-generated IR expression files from the optimizer are available in `evaluation/{architecture}/` for each architecture and model.
-
-### Usage
-```bash
-python profile/{method}_{model}_benchmark.py [options]
-
-# Options:
-#   --start   : Start from specific test case ID (default: 0)
-#   --num     : Number of expressions to benchmark (default: 10)
-#   --end     : Run from start ID to the last test case
-#   --device  : CUDA device number (default: 0)
-#   --topk    : Number of top kernels to report (default: 5)
-#   --all     : Profiling all cases in the IR expressions file
-```
-
-### Examples
-```bash
-# Profile 100 IR expressions starting from ID 0
-python profile/vanilla_llama_benchmark.py --num 100 --device 0
-
-# Profile from ID 500 to the end
-python profile/ffn_falcon_benchmark.py --start 500 --end --device 1
-
-# Profile all IR expressions
-# Please use this command to find the best IR
-python profile/prenorm_llama_benchmark.py --all
-```
-
-- You can check top-k kernel result in `{method}_{model}_{topk}.json` in `evaluation` directory.
 
 ## Model Configurations
 

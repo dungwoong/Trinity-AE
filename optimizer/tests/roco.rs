@@ -256,7 +256,7 @@ fn llama_extract_rmsnorm_qkv_attn_expressions() {
     .collect::<Vec<String>>() 
     .iter()
     .for_each(|line| {
-        // writeln!(writer, "{}", line).expect("Failed to write to file");
+        writeln!(writer, "{}", line).expect("Failed to write to file");
     });
     
     writer.flush().expect("Failed to flush writer");

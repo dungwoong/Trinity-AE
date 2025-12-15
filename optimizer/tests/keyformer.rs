@@ -282,7 +282,7 @@ fn llama_extract_rmsnorm_qkv_attn_expressions() {
     .collect::<Vec<String>>() 
     .iter()
     .for_each(|line| {
-        // writeln!(writer, "{}", line).expect("Failed to write to file");
+        writeln!(writer, "{}", line).expect("Failed to write to file");
     });
     
     writer.flush().expect("Failed to flush writer");
@@ -609,7 +609,7 @@ fn count_all() {
     (loop 0 71 tile_h h
         (store (input K_cache,V_cache)
             (load (tensor K,V) (index (tile h) (fulltile) (fulltile)))
-            (index (tile h) (const_tile 1024 16) (fulltile))
+            (index (tile h) (const_tile 1008 16) (fulltile))
         )
     )
 (seq

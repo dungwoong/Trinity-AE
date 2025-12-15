@@ -125,6 +125,7 @@ parser.add_argument("--t", type=str, help="Type architecture")
 args = parser.parse_args()
 
 case_file = f"./results/{args.t}/{args.t}_{args.m}_case{args.n}.txt"
+# case_file = f"./results/ffn/a.txt"
 
 with open(case_file, "r") as f:
     input_code = f.read().strip()
