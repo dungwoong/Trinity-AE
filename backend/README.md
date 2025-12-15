@@ -84,8 +84,9 @@ python run_eval.py --o 2 --m llama --t vanilla --n 946 --baseline inductor
 
 ### Run for figure5&6
 ```bash
-./scripts/evaluate_figure56.sh
+./scripts/evaluate56.sh
 ```
+You can also run with `python run_figure56.py` for the single test
 
 ## IR List Profiling
 
