@@ -1,55 +1,48 @@
 from codegen.convert_module import convert_ir_to_triton
-import argparse, torch, importlib.util, sys
-from baselines import device, dtype
+import argparse, torch, importlib.util, sys, json
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--m", type=str, default="llama", help="Input model type")
     parser.add_argument("--t", type=str, default="vanilla", help="Benchmark type")
     parser.add_argument("--n", type=str, default="A", help="Case number for IR")
-
+    parser.add_argument("--d", type=int, default=0, help="Type device number")
     args = parser.parse_args()
     num = args.n
     model = args.m
     target = args.t
 
+    device = torch.device(f'cuda:{args.d}' if torch.cuda.is_available() else 'cpu')
+    torch.cuda.set_device(device)
+    dtype = torch.float16
+
     output_file = f"./figure56/{target}/{target}_{num}.py"
     module_name = f"{target}_{model}_best"
 
-    if model == 'falcon':
-        M = 16
-        D = 64
-        N = 4544
-        P = 1024 - M
-        H = 71
-        N4 = 4*N
-        num_group = 4
+    # Load model config from JSON
+    with open('./model_configs.json', 'r') as f:
+        model_configs = json.load(f)
 
-        constants = {
-            'M': M,
-            'D': D,
-            'N': N,
-            'P': P,
-            'H': H,
-            'N4': N4,
-        }
-    elif model == 'llama':
-        M = 16
-        D = 128
-        N = 4096
-        P = 1024 - M
-        H = 32
-        N4 = N*4
-        num_group = 4
+    if model not in model_configs:
+        raise ValueError(f"Unknown model: {model}. Available: {list(model_configs.keys())}")
 
-        constants = {
-            'M': M,
-            'D': D,
-            'N': N,
-            'P': P,
-            'H': H,
-            'N4': N4,
-        }
+    config = model_configs[model]
+    M = config['M']
+    D = config['D']
+    N = config['N']
+    P = config['P'] - M
+    H = config['H']
+    N4 = config['N4']
+    num_group = config.get('num_group', 4)
+
+    constants = {
+        'M': M,
+        'D': D,
+        'N': N,
+        'P': P,
+        'H': H,
+        'N4': N4,
+    }
     
     tensor_shapes = {
         'X': ('M', 'N'),
@@ -123,9 +116,6 @@ def main():
     WK = torch.randn((N, N), device=device, dtype=dtype) * std
     WV = torch.randn((N, N), device=device, dtype=dtype) * std
 
-    WK_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
-    WV_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
-
     K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
     V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
 
@@ -135,14 +125,14 @@ def main():
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
     # --------------- Additional init for RoCo ---------------------
-    C_exp = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
+    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
     C_out1 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
     C_out2 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
 
     # --------------- Additional init for KeyFormer ---------------------
-    C = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_out = torch.zeros((H, P+M), device=device, dtype=dtype) * std
+    C = torch.zeros((H, M, P+M), device=device, dtype=dtype)
+    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
+    C_out = torch.zeros((H, P+M), device=device, dtype=dtype)
     noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
 
     # --------------- Init for FFN ---------------------
@@ -172,7 +162,6 @@ def main():
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
     forward = getattr(module, "forward")
-    # forward = getattr(module, "forward_m1_padded")
 
     tensor_params = getattr(module, 'TENSOR_PARAMS')
     block_params = getattr(module, 'BLOCK_PARAMS')
