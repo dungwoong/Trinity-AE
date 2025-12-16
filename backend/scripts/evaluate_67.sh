@@ -1,37 +1,3 @@
-echo "**********************[LLaMA RoCo A]****************************"
-for i in {1..3}; do
-    echo "<Trial $i>"
-    python run_figure67.py --m llama --t roco --n A
-    sleep 5
-done
-
-echo "**********************[LLaMA RoCo B]****************************"
-for i in {1..3}; do
-    echo "<Trial $i>"
-    python run_figure67.py --m llama --t roco --n B
-    sleep 5
-done
-
-echo "**********************[LLaMA RoCo C]****************************"
-for i in {1..3}; do
-    echo "<Trial $i>"
-    python run_figure67.py --m llama --t roco --n C
-    sleep 5
-done
-
-echo "**********************[LLaMA RoCo D]****************************"
-for i in {1..3}; do
-    echo "<Trial $i>"
-    python run_figure67.py --m llama --t roco --n D
-    sleep 5
-done
-
-echo "**********************[LLaMA RoCo E]****************************"
-for i in {1..3}; do
-    echo "<Trial $i>"
-    python run_figure67.py --m llama --t roco --n E
-    sleep 5
-done
 
 echo "**********************[LLaMA Keyformer A]****************************"
 for i in {1..3}; do
@@ -86,5 +52,40 @@ echo "**********************[LLaMA Keyformer H]****************************"
 for i in {1..3}; do
     echo "<Trial $i>"
     python run_figure67.py --m llama --t keyformer --n H
+    sleep 5
+done
+
+echo "**********************[LLaMA RoCo A]****************************"
+for i in {1..3}; do
+    echo "<Trial $i>"
+    python run_figure67.py --m llama --t roco --n A
+    sleep 5
+done
+
+echo "**********************[LLaMA RoCo B]****************************"
+for i in {1..3}; do
+    echo "<Trial $i>"
+    python run_figure67.py --m llama --t roco --n B
+    sleep 5
+done
+
+echo "**********************[LLaMA RoCo C]****************************"
+for i in {1..3}; do
+    echo "<Trial $i>"
+    python run_figure67.py --m llama --t roco --n C
+    sleep 5
+done
+
+echo "**********************[LLaMA RoCo D]****************************"
+for i in {1..3}; do
+    echo "<Trial $i>"
+    python run_figure67.py --m llama --t roco --n D
+    sleep 5
+done
+
+echo "**********************[LLaMA RoCo E]****************************"
+for i in {1..3}; do
+    echo "<Trial $i>"
+    python run_figure67.py --m llama --t roco --n E
     sleep 5
 done
