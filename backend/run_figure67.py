@@ -125,13 +125,13 @@ def main():
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
     # --------------- Additional init for RoCo ---------------------
-    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
+    C_exp = torch.zeros((H, M, P+M), device=device, dtype=dtype)
     C_out1 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
     C_out2 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
 
     # --------------- Additional init for KeyFormer ---------------------
     C = torch.zeros((H, M, P+M), device=device, dtype=dtype)
-    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
+    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=dtype)
     C_out = torch.zeros((H, P+M), device=device, dtype=dtype)
     noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
 
