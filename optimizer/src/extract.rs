@@ -95,14 +95,14 @@ pub fn enumerate_recursive_with_parent(
 
 // Heuristic approach: extract expression with minimal kernels
 #[derive(Debug, Clone)]
-struct SemiExpression {
+pub struct SemiExpression {
     structure: String,
     kernel_count: usize,
     path: StructuralPath, // Track the specific path through the egraph that led to this semi-expression
 }
 
 #[derive(Debug, Clone)]
-struct StructuralPath {
+pub struct StructuralPath {
     root_eclass: Id,
     node_choices: HashMap<Id, TileLang>,
     traversal_order: Vec<Id>,
