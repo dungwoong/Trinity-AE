@@ -2580,9 +2580,74 @@ def {kernel_name}(
         
         # Restore cross_sloop_memory_tensors
         self.cross_sloop_memory_tensors = saved_cross_sloop
-        
+
+        # Find tensors stored in this sloop that are used in OTHER sloops.
+        # This triggers Triton's OptimizeThreadLocality "loopResult.hasOneUse()" assertion.
+        # We add materialization (+ 0.0) only for such tensors to break the multi-loop use pattern.
+        stored_in_this_sloop = set()
+        if len(node.children) > 4:
+            body = node.children[4]
+            def find_stored_tensors(n: ASTNode):
+                if n.node_type == NodeType.STORE:
+                    tensor_node = n.children[0]
+                    if tensor_node.node_type == NodeType.TENSOR:
+                        for child in tensor_node.children:
+                            if child.node_type == NodeType.VAR:
+                                if child.value in self.intermediate_tensors:
+                                    stored_in_this_sloop.add(child.value)
+                for child in n.children:
+                    if isinstance(child, ASTNode) and child.node_type != NodeType.SLOOP:
+                        find_stored_tensors(child)
+            find_stored_tensors(body)
+
+        # Count how many distinct sloops use each tensor
+        def count_sloops_using_tensor(tensor_name: str) -> int:
+            """Count how many distinct sloops load this tensor"""
+            sloop_count = [0]
+            def check_sloop(n: ASTNode, current_sloop_id: int = 0):
+                if n.node_type == NodeType.SLOOP:
+                    # New sloop - increment ID and check inside
+                    new_id = current_sloop_id + 1
+                    uses_tensor = [False]
+                    def check_loads(inner: ASTNode):
+                        if inner.node_type == NodeType.LOAD:
+                            if len(inner.children) > 0:
+                                t_node = inner.children[0]
+                                if t_node.node_type == NodeType.TENSOR:
+                                    for child in t_node.children:
+                                        if child.node_type == NodeType.VAR and child.value == tensor_name:
+                                            uses_tensor[0] = True
+                                            return
+                        for child in inner.children:
+                            if isinstance(child, ASTNode) and child.node_type != NodeType.SLOOP:
+                                check_loads(child)
+                    # Check if this sloop uses the tensor (excluding nested sloops)
+                    if len(n.children) > 4:
+                        check_loads(n.children[4])
+                    if uses_tensor[0]:
+                        sloop_count[0] += 1
+                    # Continue checking nested/sibling sloops
+                    for child in n.children:
+                        if isinstance(child, ASTNode):
+                            check_sloop(child, new_id)
+                else:
+                    for child in n.children:
+                        if isinstance(child, ASTNode):
+                            check_sloop(child, current_sloop_id)
+            if hasattr(self, 'current_ast') and self.current_ast:
+                check_sloop(self.current_ast)
+            return sloop_count[0]
+
+        # Add materialization only for tensors used in multiple sloops
+        for tensor in sorted(stored_in_this_sloop):
+            if hasattr(self, 'cross_sloop_memory_tensors') and tensor in self.cross_sloop_memory_tensors:
+                continue
+            # If used in 2+ distinct sloops, needs materialization
+            if count_sloops_using_tensor(tensor) >= 2:
+                code += f"{indent}{tensor} = {tensor} + 0.0\n"
+
         return code
-    
+
     def _generate_seq(self, node: ASTNode) -> str:
         """Generate sequence of operations (for nested seq nodes only)"""
         code = ""
@@ -3330,24 +3395,28 @@ def {kernel_name}(
         # Check if we're storing to an exp tensor (fp32)
         exp_tensors = getattr(self, 'exp_tensors', set())
         current_tensor = getattr(self, 'current_store_tensor', None)
-        
-        # Check if either operand involves exp tensors
-        left_is_exp = self._contains_exp_tensor_load(left_child, exp_tensors)
-        right_is_exp = self._contains_exp_tensor_load(right_child, exp_tensors)
-        
-        # If storing to fp32 tensor or one operand is fp32, handle type conversion
-        if current_tensor and current_tensor in exp_tensors:
-            # Storing to fp32 tensor
-            if left_is_exp and not right_is_exp:
+
+        # Check if either operand is fp32:
+        # 1. Loaded from exp tensor (e.g., C_exp variable)
+        # 2. Contains exp operation directly (e.g., tl.exp(...) as operand)
+        left_is_fp32 = (self._contains_exp_tensor_load(left_child, exp_tensors) or
+                        self._contains_exp_operation(left_child))
+        right_is_fp32 = (self._contains_exp_tensor_load(right_child, exp_tensors) or
+                         self._contains_exp_operation(right_child))
+
+        # If either operand is fp32, match types for tl.dot
+        if left_is_fp32 or right_is_fp32 or (current_tensor and current_tensor in exp_tensors):
+            # At least one operand is fp32
+            if left_is_fp32 and not right_is_fp32:
                 # Left is fp32, convert right to fp32
                 right = f"{right}.to(tl.float32)"
-            elif right_is_exp and not left_is_exp:
+            elif right_is_fp32 and not left_is_fp32:
                 # Right is fp32, convert left to fp32
                 left = f"{left}.to(tl.float32)"
-            # If both are exp or neither, no conversion needed
+            # If both are fp32 or both are fp16, no conversion needed
             return f"tl.dot({left}, {right})"
         else:
-            # Storing to fp16 tensor
+            # Both operands are fp16, storing to fp16 tensor
             return f"tl.dot({left}, {right}).to(tl.float16)"
     
     def _generate_reduce_sum(self, node: ASTNode) -> str:
