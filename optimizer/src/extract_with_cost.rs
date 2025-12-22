@@ -1449,7 +1449,6 @@ pub fn list_expressions_from_semi_with_cost(
 
     // Check if index is special value (usize::MAX) to return all best expressions
     if index == usize::MAX {
-        let mut all_best_expressions = Vec::new();
         let mut multi_enode_tile_sets = Vec::new();
 
         // Collect multi-enode tile information from the first semi-expression only
@@ -1536,7 +1535,7 @@ pub fn list_expressions_from_semi_with_cost(
             })
             .collect();
 
-        all_best_expressions = best_expressions;
+        let all_best_expressions = best_expressions;
 
         println!(
             "Extracted best expressions for all {} semi-expressions",
