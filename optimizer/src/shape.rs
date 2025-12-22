@@ -81,7 +81,7 @@ impl ShapeTracker {
                         let tile_size = match tile_idx {
                             TileIndex::FullTile => Dimension::Concrete(*full_dim),
                             TileIndex::Tile => Dimension::Concrete(self.get_tile_size(*full_dim)),
-                            TileIndex::ConstTile(start, interval) => Dimension::Concrete(*interval),
+                            TileIndex::ConstTile(_start, interval) => Dimension::Concrete(*interval),
                             TileIndex::Elem => Dimension::Concrete(1),
                         };
                         tile_dims.push(tile_size);

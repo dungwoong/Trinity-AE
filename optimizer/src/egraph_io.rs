@@ -1,10 +1,8 @@
 use crate::language::{LoopAnalysis, TileLang};
 use egg::*;
-use serde_json;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fs::File;
-use std::io::BufReader;
 use std::io::{BufWriter, Read, Write};
 
 /// Save the raw egraph structure to a file with proper ID references
@@ -72,7 +70,7 @@ pub fn save_raw_egraph(
 }
 
 // Helper function to format a node with ID references instead of expanded expressions
-fn format_node_with_ids(egraph: &EGraph<TileLang, LoopAnalysis>, node: &TileLang) -> String {
+fn format_node_with_ids(_egraph: &EGraph<TileLang, LoopAnalysis>, node: &TileLang) -> String {
     use std::fmt::Write;
     use TileLang::*;
     let mut result = String::new();

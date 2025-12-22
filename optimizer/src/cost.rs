@@ -2,8 +2,6 @@ use crate::language::*;
 use crate::shape::{Dimension, TensorShape};
 use crate::utils::*;
 use egg::*;
-use std::collections::HashMap;
-use std::collections::HashSet;
 
 pub type EGraph = egg::EGraph<TileLang, LoopAnalysis>;
 

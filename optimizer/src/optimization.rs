@@ -3,7 +3,7 @@
 use crate::language::LoopAnalysis;
 use crate::language::TileLang;
 use egg::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 const MAX_ITER: usize = 10;
 
@@ -15,7 +15,7 @@ pub fn run_until_saturated(
     let parsed_expr: RecExpr<TileLang> = expr.parse().unwrap();
 
     // 기본 BackoffScheduler
-    let mut default_scheduler = BackoffScheduler::default()
+    let default_scheduler = BackoffScheduler::default()
         .rule_match_limit("seq-comm-tail", 5000)
         .rule_ban_length("seq-comm-tail", 1)
         .rule_match_limit("seq-comm", usize::MAX)

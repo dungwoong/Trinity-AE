@@ -1,4 +1,3 @@
-use crate::cost::*;
 use crate::shape::{Dimension, ShapeTracker, TensorShape};
 use crate::utils::*;
 use egg::*;
@@ -101,7 +100,7 @@ impl Analysis<TileLang> for LoopAnalysis {
                     for (to_dim, from_dim) in to_shape.dims.iter().zip(&from_shape.dims) {
                         match (to_dim, from_dim) {
                             // Both concrete and equal - keep it
-                            (Dimension::Concrete(t), Dimension::Concrete(f)) => {
+                            (Dimension::Concrete(t), Dimension::Concrete(_f)) => {
                                 merged_dims.push(Dimension::Concrete(*t));
                             }
                             // Wildcard resolution - take concrete value
@@ -183,25 +182,25 @@ impl Analysis<TileLang> for LoopAnalysis {
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::Input(tensor) => Self::Data {
+            TileLang::Input(_tensor) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::Output(tensor) => Self::Data {
+            TileLang::Output(_tensor) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::Tensor(tensor) => Self::Data {
+            TileLang::Tensor(_tensor) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::Index(args) => Self::Data {
+            TileLang::Index(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
@@ -240,43 +239,43 @@ impl Analysis<TileLang> for LoopAnalysis {
                     tensor_shape,
                 }
             }
-            TileLang::Store([base, val, idx]) => Self::Data {
+            TileLang::Store([_base, _val, _idx]) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::Loop(args) => Self::Data {
+            TileLang::Loop(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::TLoop(args) => Self::Data {
+            TileLang::TLoop(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::DLoop(args) => Self::Data {
+            TileLang::DLoop(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::SLoop(args) => Self::Data {
+            TileLang::SLoop(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::PLoop(args) => Self::Data {
+            TileLang::PLoop(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
                 tensor_shape: None,
             },
-            TileLang::Seq(args) => Self::Data {
+            TileLang::Seq(_args) => Self::Data {
                 is_deleted: HashSet::new(),
                 read_set: Vec::new(),
                 write_set: Vec::new(),
@@ -899,7 +898,7 @@ impl Analysis<TileLang> for LoopAnalysis {
             // println!("            try memory forwarding at {:?}", seq_elements);
 
             let mut iter = seq_elements.into_iter();
-            let mut op1 = iter.next().unwrap();
+            let op1 = iter.next().unwrap();
 
             // op1 must be (store A, val, idx)
             let Some((base_name, idx_expr, val_id)) = extract_store_info(egraph, op1) else {

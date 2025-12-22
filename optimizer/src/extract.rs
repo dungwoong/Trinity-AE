@@ -1,13 +1,10 @@
 //! Extracting high performance potential expressions
 
-use crate::cost::*;
 use crate::language::*;
-use crate::utils::*;
 use egg::*;
 use num_bigint::BigUint;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::str::FromStr;
 
 pub type EGraph = egg::EGraph<TileLang, LoopAnalysis>;
 const MAX_DEPTH: usize = 100;

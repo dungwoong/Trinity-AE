@@ -3,17 +3,13 @@ use crate::extract::*;
 use crate::language::*;
 use crate::utils::*;
 use egg::*;
-use json::{array, object, JsonValue};
-use num_bigint::BigUint;
+use json::{object, JsonValue};
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::collections::VecDeque;
 use std::fs;
-use std::fs::File;
 use std::io;
-use std::io::Write;
-use std::str::FromStr;
 
 pub type EGraph = egg::EGraph<TileLang, LoopAnalysis>;
 const MAX_DEPTH: usize = 100;
@@ -191,7 +187,7 @@ pub fn enumerate_recursive_with_cost_v2(
     max_num_kernel: usize,
     loop_level: usize,
     should_sequential: bool,
-) -> Vec<(SemiExpressionResult)> {
+) -> Vec<SemiExpressionResult > {
     // Original implementation - filter on first visit
     // if visited.contains(&eclass_id) {
     //     let (best_cost, best_expr) = extractor.find_best(eclass_id);
@@ -702,7 +698,7 @@ pub fn reconstruct_full_recursive_all(
             eclass.nodes.iter().enumerate().collect()
         };
 
-    for (enode_index, enode) in enodes_to_explore {
+    for (_enode_index, enode) in enodes_to_explore {
         match enode {
             TileLang::Tile(var_id) => {
                 let Some(var_name) = get_var_string(egraph, *var_id) else {
@@ -1537,14 +1533,14 @@ pub fn list_expressions_from_semi_with_cost(
         let best_expressions: Vec<String> = semi_results
             .par_iter()
             .enumerate()
-            .map(|(i, semi_result)| {
+            .map(|(_i, semi_result)| {
                 let (new_egraph, new_root_id) =
                     create_egraph_from_semi_expression(egraph, semi_result, root_id);
                 let extractor = create_fine_grained_extractor(&new_egraph);
                 // let extractor = Extractor::new(&new_egraph, AstSize);
                 // let extractor = Extractor::new(&egraph, AstSize);
                 // let (best_cost, best_expr) = extractor.find_best(root_id);
-                let (best_cost, best_expr) = extractor.find_best(new_root_id);
+                let (_best_cost, best_expr) = extractor.find_best(new_root_id);
                 // println!("semi {:?} cost {:?}", i, best_cost);
 
                 // format!("// Semi-expression index {}: cost = {}", i, best_cost)
@@ -1612,7 +1608,7 @@ pub fn list_expressions_from_semi_with_cost(
     }
 
     let extractor = create_fine_grained_extractor(&new_egraph);
-    let (best_cost, best_expr) = extractor.find_best(new_root_id);
+    let (_best_cost, best_expr) = extractor.find_best(new_root_id);
 
     Ok((vec![format!("{}", best_expr)], multi_enode_tile_sets))
 }

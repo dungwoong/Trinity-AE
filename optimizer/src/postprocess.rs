@@ -3,11 +3,8 @@
 use crate::language::*;
 use crate::utils::*;
 use egg::*;
-use num_bigint::BigUint;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::collections::VecDeque;
-use std::str::FromStr;
 
 pub type EGraph = egg::EGraph<TileLang, LoopAnalysis>;
 
@@ -60,7 +57,7 @@ pub fn postprocess_egraph(egraph: &mut EGraph) {
         let nodes = egraph[id].nodes.clone();
         let mut legal = false;
         for node in nodes {
-            if let TileLang::Seq([left, right]) = node {
+            if let TileLang::Seq([_left, _right]) = node {
                 if is_legal_seq_node(egraph, &node) {
                     legal = true;
                 }
@@ -150,7 +147,7 @@ pub fn apply_loop_variable_coherence_string(
     let mut substitutions: Vec<(usize, usize, String)> = Vec::new();
 
     for (start_pos, end_pos, expr_str) in tile_elem_positions.iter().rev() {
-        if let Some((op_type, var_name)) = parse_tile_elem_expr(expr_str) {
+        if let Some((_op_type, var_name)) = parse_tile_elem_expr(expr_str) {
             // Find which loops are in scope at this position
             let in_scope_vars = get_in_scope_vars(&loop_scopes, *start_pos);
 
@@ -355,7 +352,7 @@ pub fn eliminate_dead_stores(
     let node = expr.as_ref()[node_idx].clone();
 
     match node {
-        TileLang::Store([base_id, val_id, idx_id]) => {
+        TileLang::Store([base_id, _val_id, _idx_id]) => {
             if let Some(base_name) = get_base_name(expr, usize::from(base_id)) {
                 // Check if any basename overlaps with any element in read_set
                 let is_read = read_set

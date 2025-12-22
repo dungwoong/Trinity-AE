@@ -40,7 +40,7 @@ pub fn collect_access_sets(
                                     if let TileLang::Var(sym) = tensor_node {
                                         let base_name = sym.as_str().to_string();
                                         let idx_expr = extract_expr(egraph, *idx);
-                                        let src = if need_source {
+                                        let _src = if need_source {
                                             Some(enode.clone())
                                         } else {
                                             None
@@ -80,7 +80,7 @@ pub fn collect_access_sets(
                                     if let TileLang::Var(sym) = tensor_node {
                                         let base_name = sym.as_str().to_string();
                                         let idx_expr = extract_expr(egraph, *idx);
-                                        let src = if need_source {
+                                        let _src = if need_source {
                                             Some(enode.clone())
                                         } else {
                                             None
@@ -368,7 +368,7 @@ pub fn index_depends_on(index: &TileLang, egraph: &EGraph, loop_var: &str) -> bo
                     TileLang::FullTile => false, // no dependency
                     TileLang::Tile(tile_idx) => depends_on_id(egraph, *tile_idx, loop_var),
                     TileLang::Elem(tile_idx) => depends_on_id(egraph, *tile_idx, loop_var),
-                    TileLang::Index(inner_args) => index_depends_on(n, egraph, loop_var),
+                    TileLang::Index(_inner_args) => index_depends_on(n, egraph, loop_var),
                     _ => false, // not a tile structure
                 })
             })
@@ -851,7 +851,7 @@ pub fn has_loop_carried_dependency_egraph(egraph: &EGraph, body_id: Id, loop_var
     // let mut write_accesses = Vec::new();
     // collect_access_sets(egraph, body_id, &mut read_accesses, &mut write_accesses);
 
-    let (read_accesses, write_accesses) = collect_access_sets(egraph, body_id, false);
+    let (_read_accesses, write_accesses) = collect_access_sets(egraph, body_id, false);
 
     // 2. check whether the index of write access contains loop_var or not.
     for write_access in &write_accesses {

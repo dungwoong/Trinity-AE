@@ -134,8 +134,8 @@ impl Applier<TileLang, LoopAnalysis> for LoopFusion {
         egraph: &mut EGraph,
         eclass: Id,
         subst: &Subst,
-        searcher_ast: Option<&PatternAst<TileLang>>,
-        rule_name: Symbol,
+        _searcher_ast: Option<&PatternAst<TileLang>>,
+        _rule_name: Symbol,
     ) -> Vec<Id> {
         let start = subst[self.start];
         let n = subst[self.n];
