@@ -112,6 +112,7 @@ fn format_node_with_ids(_egraph: &EGraph<TileLang, LoopAnalysis>, node: &TileLan
             Sigmoid(_) => "sigmoid",
             Concat(_) => "concat",
             Broadcast(_) => "bcast",
+            Transpose(_) => "transpose",
             Permute3(_) => "permute3",
             Squeeze(_) => "squeeze",
             Unsqueeze(_) => "unsqueeze",
@@ -353,6 +354,9 @@ fn parse_node(
             "sigmoid" if child_ids.len() >= 1 => Sigmoid(child_ids[0]),
             "concat" if child_ids.len() >= 3 => Concat([child_ids[0], child_ids[1], child_ids[2]]),
             "bcast" if child_ids.len() >= 2 => Broadcast([child_ids[0], child_ids[1]]),
+            "transpose" if child_ids.len() >= 1 => {
+                Transpose(child_ids[0])
+            }
             "permute3" if child_ids.len() >= 4 => {
                 Permute3([child_ids[0], child_ids[1], child_ids[2], child_ids[3]])
             }

@@ -968,6 +968,11 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         TileLang::Broadcast(children) => {
             TileLang::Broadcast([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
+        TileLang::Transpose(child) => {
+            TileLang::Transpose(
+                old_to_new_id[child]
+            )      
+        },
         TileLang::Permute3(children) => TileLang::Permute3([
             old_to_new_id[&children[0]],
             old_to_new_id[&children[1]],

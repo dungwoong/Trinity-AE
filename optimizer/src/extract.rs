@@ -763,6 +763,10 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
             children.get(1).unwrap_or(&"?".to_string())
         ),
 
+        TileLang::Transpose(_) => {
+            format!("(transpose {})", children.get(0).unwrap_or(&"?".to_string()))
+        },
+
         TileLang::Permute3(_) => format!(
             "(permute3 {} {} {} {})",
             children.get(0).unwrap_or(&"?".to_string()),

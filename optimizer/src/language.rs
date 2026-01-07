@@ -43,6 +43,7 @@ define_language! {
         "concat" = Concat([Id; 3]), // concat(a, b, axis)
         "bcast" = Broadcast([Id; 2]), // broadcast(a, axis)
 
+        "transpose" = Transpose(Id),
         "permute3" = Permute3([Id; 4]), // permute(A, 0, 2, 1)
         "squeeze" = Squeeze([Id; 2]), // squeeze(A, axis)
         "unsqueeze" = Unsqueeze([Id; 2]), // unsqueeze(A, axis)
@@ -687,6 +688,27 @@ impl Analysis<TileLang> for LoopAnalysis {
                         }
                         _ => None,
                     })
+                });
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Transpose(input) => {
+                // Transpose swaps the last two dimensions (e.g., MxN -> NxM).
+                // If rank < 2, shape inference is not possible here.
+                let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
+                    let rank = input_shape.dims.len();
+                    if rank >= 2 {
+                        let mut result_dims = input_shape.dims.clone();
+                        result_dims.swap(rank - 2, rank - 1);
+                        Some(TensorShape::new_with_dims(result_dims))
+                    } else {
+                        None
+                    }
                 });
 
                 Self::Data {
