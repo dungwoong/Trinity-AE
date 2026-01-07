@@ -1,0 +1,6 @@
+name: tvm
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+prefix: /home/um3maru/miniconda3/envs/tvm
