@@ -1,6 +1,12 @@
-name: tvm
+name: trinity_fe
 channels:
   - defaults
 dependencies:
   - python=3.11
-prefix: /home/um3maru/miniconda3/envs/tvm
+  - pip
+  - pip:
+      - --pre
+      - -f https://mlc.ai/wheels
+      - mlc-ai-nightly-cpu
+      - numpy
+      - torch

@@ -8,6 +8,7 @@ IR transformation, and execution, focused on transformer-style models.
 - Python: **3.11**
 - Conda environment name: `tvm`
 - TVM version: **TVM Unity (Relax, MLC AI nightly)**
+- PyTorch: **installed via pip in the conda env**
 
 
 ## Setup
@@ -15,7 +16,7 @@ IR transformation, and execution, focused on transformer-style models.
 
 ```bash
 conda env create -f environment.yml
-conda activate tvm
+conda activate trinity_fe
 ```
 
 If the environment already exists:
@@ -23,28 +24,14 @@ If the environment already exists:
 conda activate tvm
 ```
 
-### 2. TVM Unity installation
-By default, the CPU version of TVM Unity is installed via environment.yml.
-If CUDA support is required, install one of the following manually,
-depending on your system CUDA version:
-
-#### CUDA 12.8
+### 2. Verify installation
 ```bash
-pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu128
-```
-#### CUDA 12.1
-```bash
-pip install --pre -U -f https://mlc.ai/wheels mlc-ai-nightly-cu121
-```
-Note: CUDA packages are not pinned in environment.yml because they depend
-on the local CUDA runtime and driver version.
-
-### 3. Verify installation
-```python
+python - <<'PY'
 import tvm
 from tvm import relax
 
 print("TVM version:", tvm.__version__)
+PY
 ```
 
 
