@@ -175,17 +175,22 @@ def export_main_func(main_func: T.MainFunc, output_dir: str, basename: str) -> N
 
 
 def _collect_tensor_shapes(main_func: T.MainFunc) -> dict:
-    shape_map: dict[str, List[int]] = {}
-    tensors = (
-        list(main_func.input_tensors)
-        + list(main_func.output_tensors)
-        + list(main_func.intermediate_tensors)
-    )
-    for tensor in tensors:
+    shape_map: dict[str, dict] = {}
+    for tensor in main_func.input_tensors:
         dims = _shape_to_list(tensor.shape)
         if dims is None:
             continue
-        shape_map[tensor.name] = dims
+        shape_map[tensor.name] = {"shape": dims, "type": "input"}
+    for tensor in main_func.intermediate_tensors:
+        dims = _shape_to_list(tensor.shape)
+        if dims is None:
+            continue
+        shape_map[tensor.name] = {"shape": dims, "type": "intermediate"}
+    for tensor in main_func.output_tensors:
+        dims = _shape_to_list(tensor.shape)
+        if dims is None:
+            continue
+        shape_map[tensor.name] = {"shape": dims, "type": "output"}
     return shape_map
 
 

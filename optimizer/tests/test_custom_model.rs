@@ -27,7 +27,16 @@ fn load_shapes(path: &Path) -> Vec<(String, Vec<usize>)> {
     let obj = json.as_object().expect("Shapes JSON must be an object");
     let mut out = Vec::new();
     for (name, dims_val) in obj {
-        let Some(arr) = dims_val.as_array() else { continue };
+        let arr = if let Some(arr) = dims_val.as_array() {
+            arr
+        } else if let Some(obj) = dims_val.as_object() {
+            match obj.get("shape").and_then(|shape| shape.as_array()) {
+                Some(arr) => arr,
+                None => continue,
+            }
+        } else {
+            continue;
+        };
         let mut dims = Vec::new();
         let mut ok = true;
         for dim in arr {
