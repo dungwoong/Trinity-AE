@@ -2642,8 +2642,20 @@ def {kernel_name}(
             return sloop_count[0]
 
         # Add materialization only for tensors used in multiple sloops
+        local_intermediate_tensors = set(self.intermediate_tensors)
+        if hasattr(self, 'cross_sloop_memory_tensors'):
+            local_intermediate_tensors -= self.cross_sloop_memory_tensors
+        local_intermediate_tensors -= self.cross_kernel_tensors
+        if os.environ.get("TRITON_GEN_DEBUG") == "1":
+            print(
+                "[TRITON_GEN_DEBUG] materialize "
+                f"stored_in_sloop={sorted(stored_in_this_sloop)} "
+                f"local_intermediates={sorted(local_intermediate_tensors)} "
+                f"cross_sloop={sorted(getattr(self, 'cross_sloop_memory_tensors', set()))} "
+                f"cross_kernel={sorted(self.cross_kernel_tensors)}"
+            )
         for tensor in sorted(stored_in_this_sloop):
-            if hasattr(self, 'cross_sloop_memory_tensors') and tensor in self.cross_sloop_memory_tensors:
+            if tensor not in local_intermediate_tensors:
                 continue
             # If used in 2+ distinct sloops, needs materialization
             if count_sloops_using_tensor(tensor) >= 2:
@@ -2673,6 +2685,7 @@ def {kernel_name}(
         index_node = node.children[1]
         
         tensor_name = tensor_node.children[0].value
+        node.tensor_shape = self.tensor_shapes.get(tensor_name)
         
         # Skip checking for temporary variables - we don't create them anymore
         
@@ -2955,13 +2968,15 @@ def {kernel_name}(
                 # Get dimension (for squeeze, we use reshape instead)
                 # Infer the source tensor name for dimension info
                 source_tensor_name = self._infer_tensor_name(child)
+                squeeze_dim = None
+                try:
+                    squeeze_dim = int(self._generate_node(val_node.children[1]))
+                except (TypeError, ValueError):
+                    squeeze_dim = None
                 
                 # For squeeze operations, we need to use the source tensor's dimensions
                 # after removing the squeezed dimension
                 if source_tensor_name and source_tensor_name in self.tensor_shapes:
-                    # Get the squeezed dimension
-                    squeeze_dim = int(self._generate_node(val_node.children[1]))
-                    
                     # Check if child was a permute operation to map dimensions correctly
                     if child.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE] and hasattr(child, 'permute_dims'):
                         # Get the permuted dimension order
@@ -3002,13 +3017,31 @@ def {kernel_name}(
                     
                     shape_str = f"({', '.join(shape_parts)})"
                     value_expr = f"tl.reshape({tensor_expr}, {shape_str})"
+                elif hasattr(child, "tensor_shape") and child.tensor_shape and squeeze_dim is not None:
+                    child_shape = child.tensor_shape
+                    if squeeze_dim < 0:
+                        squeeze_dim += len(child_shape)
+                    if 0 <= squeeze_dim < len(child_shape):
+                        shape_parts = []
+                        shape_values = []
+                        for i, dim_value in enumerate(child_shape):
+                            if i == squeeze_dim:
+                                continue
+                            if isinstance(dim_value, str):
+                                shape_parts.append(dim_value)
+                            else:
+                                shape_parts.append(str(dim_value))
+                            shape_values.append(dim_value)
+                        shape_str = f"({', '.join(shape_parts)})"
+                        value_expr = f"tl.reshape({tensor_expr}, {shape_str})"
+                        if shape_values:
+                            val_node.tensor_shape = tuple(shape_values)
                 else:
                     # Fallback: use source tensor shape after squeeze
                     # For squeeze operation, we need to use the dimensions of the source tensor O
                     # not the output tensor O2
                     if source_tensor_name and source_tensor_name in self.tensor_shapes:
                         # Get source tensor shape and remove squeezed dimension
-                        squeeze_dim = int(self._generate_node(val_node.children[1]))
                         shape_parts = []
                         source_shape = self.tensor_shapes[source_tensor_name]
                         
@@ -3297,6 +3330,7 @@ def {kernel_name}(
                 operand = child.temp_var
             else:
                 operand = self._generate_node(child)
+            node.tensor_shape = getattr(child, "tensor_shape", None)
             return f"({operand} * {operand}).to(tl.float16)"
         
         # For other binary operations
@@ -3313,6 +3347,17 @@ def {kernel_name}(
             right = right_child.temp_var
         else:
             right = self._generate_node(right_child)
+
+        left_shape = getattr(left_child, "tensor_shape", None)
+        right_shape = getattr(right_child, "tensor_shape", None)
+        if left_shape == right_shape:
+            node.tensor_shape = left_shape
+        elif left_shape is None:
+            node.tensor_shape = right_shape
+        elif right_shape is None:
+            node.tensor_shape = left_shape
+        else:
+            node.tensor_shape = None
             
         # Check if we're storing to an exp tensor (fp32)
         exp_tensors = getattr(self, 'exp_tensors', set())
@@ -3333,6 +3378,8 @@ def {kernel_name}(
             operand = child.temp_var
         else:
             operand = self._generate_node(child)
+
+        node.tensor_shape = getattr(child, "tensor_shape", None)
         
         # Check if we're storing to an exp tensor (fp32)
         exp_tensors = getattr(self, 'exp_tensors', set())
@@ -3923,7 +3970,9 @@ def {kernel_name}(
             raise ValueError("transpose requires exactly 1 argument: tensor")
 
         source_name = self._infer_tensor_name(child)
-        if source_name in self.tensor_shapes:
+        if hasattr(child, "tensor_shape") and child.tensor_shape:
+            num_dims = len(child.tensor_shape)
+        elif source_name in self.tensor_shapes:
             num_dims = len(self.tensor_shapes[source_name])
         else:
             num_dims = 2
@@ -4031,6 +4080,9 @@ def {kernel_name}(
         
         # Store the permutation dimensions for later use (e.g., in squeeze)
         node.permute_dims = perm_dims
+        child_shape = getattr(child, "tensor_shape", None)
+        if child_shape and len(child_shape) == len(perm_dims):
+            node.tensor_shape = tuple(child_shape[i] for i in perm_dims)
         
         return code
 
@@ -4081,6 +4133,9 @@ def {kernel_name}(
 
         node.temp_var = temp_var
         node.permute_dims = perm_dims
+        child_shape = getattr(child, "tensor_shape", None)
+        if child_shape and len(child_shape) == len(perm_dims):
+            node.tensor_shape = tuple(child_shape[i] for i in perm_dims)
 
         return code
     
@@ -4136,6 +4191,11 @@ def {kernel_name}(
         
         # Get the dimension to squeeze
         dim = self._generate_node(node.children[1])
+        dim_value = None
+        try:
+            dim_value = int(dim)
+        except (TypeError, ValueError):
+            dim_value = None
         
         # Generate a temporary variable for the result
         temp_var = f"temp_{self.temp_counter}"
@@ -4168,6 +4228,7 @@ def {kernel_name}(
                 # Get the permuted dimension order
                 perm_dims = child.permute_dims  # e.g., (1, 0, 2)
                 shape_parts = []
+                shape_values = []
                 
                 # Map the original dimensions through the permutation
                 for i in range(num_dims):
@@ -4179,9 +4240,12 @@ def {kernel_name}(
                             shape_parts.append(dim_value)
                         else:
                             shape_parts.append(str(dim_value))
+                        if orig_dim < len(self.tensor_shapes[source_tensor_name]):
+                            shape_values.append(self.tensor_shapes[source_tensor_name][orig_dim])
             else:
                 # No permutation, use original dimension order
                 shape_parts = []
+                shape_values = []
                 for i in range(num_dims):
                     if i != int(dim):  # Skip the dimension to be squeezed
                         dim_value = self.tensor_shapes[source_tensor_name][i]
@@ -4189,10 +4253,32 @@ def {kernel_name}(
                             shape_parts.append(dim_value)
                         else:
                             shape_parts.append(str(dim_value))
+                        shape_values.append(self.tensor_shapes[source_tensor_name][i])
             
             # Pass shape directly as tuple to tl.reshape
             shape_tuple = f"({', '.join(shape_parts)})"
             code += f"{indent}{temp_var} = tl.reshape({tensor_expr}, {shape_tuple})\n"
+            if shape_values:
+                node.tensor_shape = tuple(shape_values)
+        elif hasattr(child, "tensor_shape") and child.tensor_shape and dim_value is not None:
+            child_shape = child.tensor_shape
+            if dim_value < 0:
+                dim_value += len(child_shape)
+            if 0 <= dim_value < len(child_shape):
+                shape_parts = []
+                shape_values = []
+                for i, dim_entry in enumerate(child_shape):
+                    if i == dim_value:
+                        continue
+                    if isinstance(dim_entry, str):
+                        shape_parts.append(dim_entry)
+                    else:
+                        shape_parts.append(str(dim_entry))
+                    shape_values.append(dim_entry)
+                shape_tuple = f"({', '.join(shape_parts)})"
+                code += f"{indent}{temp_var} = tl.reshape({tensor_expr}, {shape_tuple})\n"
+                if shape_values:
+                    node.tensor_shape = tuple(shape_values)
         else:
             # Fallback: simple assignment with comment
             if os.environ.get("TRITON_GEN_DEBUG") == "1":
@@ -4292,6 +4378,19 @@ def {kernel_name}(
         
         # Store temp var in node for parent operations
         node.temp_var = temp_var
+        child_shape = getattr(child, "tensor_shape", None)
+        dim_value = None
+        try:
+            dim_value = int(dim)
+        except (TypeError, ValueError):
+            dim_value = None
+        if child_shape and dim_value is not None:
+            if dim_value < 0:
+                dim_value += len(child_shape) + 1
+            if 0 <= dim_value <= len(child_shape):
+                new_shape = list(child_shape)
+                new_shape.insert(dim_value, 1)
+                node.tensor_shape = tuple(new_shape)
         
         # Store unsqueeze dimension for parent operations
         node.unsqueeze_dim = int(dim)
