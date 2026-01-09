@@ -14,7 +14,12 @@ from tqdm import tqdm
 import json
 import argparse
 
-from codegen.convert_module import convert_ir_to_triton
+try:
+    # When running from repo root with -m backend.profile.benchmark
+    from backend.codegen.convert_module import convert_ir_to_triton
+except ModuleNotFoundError:
+    # When running from backend/ with -m profile.benchmark
+    from codegen.convert_module import convert_ir_to_triton
 
 
 @dataclass
@@ -506,7 +511,7 @@ def print_comprehensive_report(all_results, top_k):
 
 def main():
     """Main function to run IR benchmarks."""
-    OUTPUT_FILE = "./evaluation/benchmark.json"
+    OUTPUT_FILE = "./profile_result/benchmark.json"
     START_EXPRESSIONS = 0
     NUM_EXPRESSIONS = 10
     TOP_K = 5

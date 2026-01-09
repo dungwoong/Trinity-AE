@@ -28,6 +28,7 @@ class NodeType(Enum):
     VAR = "var"
     ELEM = "elem"  # Element-wise indexing
     PERMUTE3 = "permute3"  # 3D permutation
+    TRANSPOSE = "transpose"
     SQUEEZE = "squeeze"  # Remove dimension
     UNSQUEEZE = "unsqueeze"  # Add dimension
     CONST_TILE = "const_tile"  # Constant range tile [start:start+size]

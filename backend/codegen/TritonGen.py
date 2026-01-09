@@ -1,4 +1,5 @@
 from typing import Dict, Tuple, List
+import os
 from .NodeType import NodeType
 from .AstNode import ASTNode
 
@@ -2355,6 +2356,8 @@ def {kernel_name}(
             return f"{indent}pass  # dummy node"
         elif node.node_type == NodeType.PERMUTE3:
             return self._generate_permute3(node)
+        elif node.node_type == NodeType.TRANSPOSE:
+            return self._generate_transpose(node)
         elif node.node_type == NodeType.SQUEEZE:
             return self._generate_squeeze(node)
         elif node.node_type == NodeType.UNSQUEEZE:
@@ -2840,7 +2843,7 @@ def {kernel_name}(
         
         # Check if value is a simple transformation operation (permute, squeeze, unsqueeze)
         # that we can generate inline without temp variable
-        if val_node.node_type in [NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        if val_node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # For these operations, generate them inline and assign directly to target tensor
             if val_node.node_type == NodeType.PERMUTE3:
                 child = val_node.children[0]
@@ -2888,6 +2891,41 @@ def {kernel_name}(
                     perm_strs.append(str(dim))
                 perm_str = f"({', '.join(perm_strs)})"
                 value_expr = f"tl.permute({tensor_expr}, {perm_str})"
+            elif val_node.node_type == NodeType.TRANSPOSE:
+                child = val_node.children[0]
+                # Generate child if needed
+                if not hasattr(child, 'temp_var'):
+                    if child.node_type == NodeType.UNSQUEEZE:
+                        unsqueeze_child = child.children[0]
+                        if not hasattr(unsqueeze_child, 'temp_var'):
+                            child_code = self._generate_node(unsqueeze_child)
+                            if child_code:
+                                code += child_code
+                                if not code.endswith('\n'):
+                                    code += '\n'
+
+                        child_code = self._generate_node(child)
+                        if child_code:
+                            code += child_code
+                            if not code.endswith('\n'):
+                                code += '\n'
+                    else:
+                        child_code = self._generate_node(child)
+                        if child_code:
+                            code += child_code
+                            if not code.endswith('\n'):
+                                code += '\n'
+
+                if hasattr(child, 'temp_var'):
+                    tensor_expr = child.temp_var
+                else:
+                    raise ValueError(f"Expected temp_var for {child.node_type} node")
+
+                perm_dims, perm_str = self._build_transpose_permutation(child, val_node)
+                if len(perm_dims) == 2 and perm_dims == (1, 0):
+                    value_expr = f"tl.trans({tensor_expr})"
+                else:
+                    value_expr = f"tl.permute({tensor_expr}, {perm_str})"
             
             elif val_node.node_type == NodeType.UNSQUEEZE:
                 child = val_node.children[0]
@@ -2906,7 +2944,7 @@ def {kernel_name}(
             elif val_node.node_type == NodeType.SQUEEZE:
                 child = val_node.children[0]
                 # Generate child if needed
-                if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3] and not hasattr(child, 'temp_var'):
+                if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE] and not hasattr(child, 'temp_var'):
                     code += self._generate_node(child)
                     if not code.endswith('\n'):
                         code += '\n'
@@ -2925,7 +2963,7 @@ def {kernel_name}(
                     squeeze_dim = int(self._generate_node(val_node.children[1]))
                     
                     # Check if child was a permute operation to map dimensions correctly
-                    if child.node_type == NodeType.PERMUTE3 and hasattr(child, 'permute_dims'):
+                    if child.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE] and hasattr(child, 'permute_dims'):
                         # Get the permuted dimension order
                         perm_dims = child.permute_dims  # e.g., (1, 0, 2)
                         shape_parts = []
@@ -3796,7 +3834,7 @@ def {kernel_name}(
     
     def _contains_loads(self, node: ASTNode) -> bool:
         """Check if node contains load operations or operations that need temp vars"""
-        if node.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        if node.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             return True
         for child in node.children:
             if isinstance(child, ASTNode) and self._contains_loads(child):
@@ -3822,7 +3860,7 @@ def {kernel_name}(
                 code += load_code
                 if not load_code.endswith('\n'):
                     code += '\n'
-        elif node.node_type in [NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # Generate these operations as well since they produce temp vars
             op_code = self._generate_node(node)
             if op_code:  # Only add if there's actual code
@@ -3840,7 +3878,7 @@ def {kernel_name}(
         if node.node_type == NodeType.LOAD:
             # Return the temp variable assigned during load generation
             return node.temp_var if hasattr(node, 'temp_var') else self._generate_node(node)
-        elif node.node_type in [NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # Return the temp variable assigned during operation generation
             return node.temp_var if hasattr(node, 'temp_var') else self._generate_node(node)
         elif node.node_type in [NodeType.ADD, NodeType.SUB, NodeType.MUL, NodeType.DIV]:
@@ -3879,6 +3917,22 @@ def {kernel_name}(
         else:
             return self._generate_node(node)
     
+    def _build_transpose_permutation(self, child: ASTNode, node: ASTNode) -> Tuple[Tuple[int, ...], str]:
+        """Build permutation tuple and string for transpose."""
+        if len(node.children) != 1:
+            raise ValueError("transpose requires exactly 1 argument: tensor")
+
+        source_name = self._infer_tensor_name(child)
+        if source_name in self.tensor_shapes:
+            num_dims = len(self.tensor_shapes[source_name])
+        else:
+            num_dims = 2
+
+        perm_dims = list(range(num_dims))
+        if num_dims >= 2:
+            perm_dims[-2], perm_dims[-1] = perm_dims[-1], perm_dims[-2]
+        return tuple(perm_dims), f"({', '.join(str(d) for d in perm_dims)})"
+
     def _generate_permute3(self, node: ASTNode) -> str:
         """Generate permute3 operation for 3D or 4D tensor
         
@@ -3899,17 +3953,36 @@ def {kernel_name}(
         
         # If child doesn't have temp_var yet, generate it
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3]:
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
                 child_code = self._generate_node(child)
                 if child_code and not child_code.endswith('\n'):
                     child_code += '\n'
         
         # Get the tensor expression
+        tensor_expr = None
         if hasattr(child, 'temp_var'):
             tensor_expr = child.temp_var
         else:
-            # This should not happen anymore with proper generation
-            raise ValueError(f"Expected temp_var for {child.node_type} node in permute3")
+            if self._contains_loads(child):
+                child_code += self._generate_loads_separately(child)
+                if child_code and not child_code.endswith('\n'):
+                    child_code += '\n'
+                tensor_expr = self._generate_node_without_loads(child)
+            else:
+                tensor_expr = self._generate_node(child)
+        if not tensor_expr:
+            if os.environ.get("TRITON_GEN_DEBUG") == "1":
+                print(
+                    "[TRITON_GEN_DEBUG] squeeze missing tensor_expr "
+                    f"child_type={child.node_type} "
+                    f"has_temp_var={hasattr(child, 'temp_var')} "
+                    f"child_code={repr(child_code)}"
+                )
+            raise ValueError(f"Expected tensor expression for {child.node_type} node in squeeze")
+        else:
+            tensor_expr = self._generate_node(child)
+            if tensor_expr is None:
+                raise ValueError(f"Expected tensor expression for {child.node_type} node in unsqueeze")
         
         # Get the permutation dimensions based on number of children
         # if len(node.children) == 4:
@@ -3960,6 +4033,56 @@ def {kernel_name}(
         node.permute_dims = perm_dims
         
         return code
+
+    def _generate_transpose(self, node: ASTNode) -> str:
+        """Generate transpose operation for tensors.
+
+        transpose in the IR takes:
+        1. The tensor to transpose
+        2-3. Optional dimension indices to swap
+
+        Examples:
+        - (transpose tensor) swaps the last two dimensions
+        - (transpose tensor 0 1) swaps dimensions 0 and 1
+        """
+        if len(node.children) != 1:
+            raise ValueError("transpose requires exactly 1 argument: tensor")
+
+        child = node.children[0]
+        child_code = ""
+
+        if not hasattr(child, 'temp_var'):
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
+                child_code = self._generate_node(child)
+                if child_code and not child_code.endswith('\n'):
+                    child_code += '\n'
+
+        if hasattr(child, 'temp_var'):
+            tensor_expr = child.temp_var
+        else:
+            raise ValueError(f"Expected temp_var for {child.node_type} node in transpose")
+
+        perm_dims, perm_str = self._build_transpose_permutation(child, node)
+
+        if hasattr(self, '_generating_inline') and self._generating_inline:
+            if len(perm_dims) == 2 and perm_dims == (1, 0):
+                return f"tl.trans({tensor_expr})"
+            return f"tl.permute({tensor_expr}, {perm_str})"
+
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+
+        indent = '    ' * self.indent_level
+        code = child_code
+        if len(perm_dims) == 2 and perm_dims == (1, 0):
+            code += f"{indent}{temp_var} = tl.trans({tensor_expr})\n"
+        else:
+            code += f"{indent}{temp_var} = tl.permute({tensor_expr}, {perm_str})\n"
+
+        node.temp_var = temp_var
+        node.permute_dims = perm_dims
+
+        return code
     
     def _generate_squeeze(self, node: ASTNode) -> str:
         """Generate squeeze operation to remove a dimension
@@ -3978,14 +4101,32 @@ def {kernel_name}(
         child_code = ""
         
         # If child needs generation, do it first
-        if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
+        if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
             child_code = self._generate_node(child)
             if not child_code.endswith('\n'):
                 child_code += '\n'
         
         # Get the tensor expression
+        tensor_expr = None
         if hasattr(child, 'temp_var'):
             tensor_expr = child.temp_var
+        else:
+            if self._contains_loads(child):
+                child_code += self._generate_loads_separately(child)
+                if child_code and not child_code.endswith('\n'):
+                    child_code += '\n'
+                tensor_expr = self._generate_node_without_loads(child)
+            else:
+                tensor_expr = self._generate_node(child)
+        if not tensor_expr:
+            if os.environ.get("TRITON_GEN_DEBUG") == "1":
+                print(
+                    "[TRITON_GEN_DEBUG] unsqueeze missing tensor_expr "
+                    f"child_type={child.node_type} "
+                    f"has_temp_var={hasattr(child, 'temp_var')} "
+                    f"child_code={repr(child_code)}"
+                )
+            raise ValueError(f"Expected tensor expression for {child.node_type} node in unsqueeze")
         # else:
         #     # For simple expressions like identifiers, evaluate inline
         #     if child.node_type == NodeType.IDENTIFIER:
@@ -4002,24 +4143,28 @@ def {kernel_name}(
         
         # Try to infer the source tensor name for dimension information
         source_tensor_name = self._infer_tensor_name(child)
+        if os.environ.get("TRITON_GEN_DEBUG") == "1":
+            print(
+                "[TRITON_GEN_DEBUG] squeeze "
+                f"child_type={child.node_type} "
+                f"has_temp_var={hasattr(child, 'temp_var')} "
+                f"source_tensor_name={source_tensor_name} "
+                f"dim={dim}"
+            )
         
         indent = '    ' * self.indent_level
         code = child_code
         
-        if source_tensor_name:
+        if source_tensor_name and source_tensor_name in self.tensor_shapes:
             # Use tensor dimension information to construct new shape for reshape
             # Build new shape by excluding the squeezed dimension
             code += f"{indent}# Squeeze dimension {dim} from {source_tensor_name}\n"
             
             # Get the number of dimensions from tensor_shapes if available
-            if source_tensor_name in self.tensor_shapes:
-                num_dims = len(self.tensor_shapes[source_tensor_name])
-            else:
-                # Default to 3D for typical attention tensors
-                num_dims = 3
+            num_dims = len(self.tensor_shapes[source_tensor_name])
             
             # Check if the child was a permute operation
-            if child.node_type == NodeType.PERMUTE3 and hasattr(child, 'permute_dims'):
+            if child.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE] and hasattr(child, 'permute_dims'):
                 # Get the permuted dimension order
                 perm_dims = child.permute_dims  # e.g., (1, 0, 2)
                 shape_parts = []
@@ -4029,19 +4174,33 @@ def {kernel_name}(
                     if i != int(dim):  # Skip the dimension to be squeezed
                         # Find which original dimension this corresponds to
                         orig_dim = perm_dims[i]
-                        shape_parts.append(f"{source_tensor_name}_dim{orig_dim}")
+                        dim_value = self.tensor_shapes[source_tensor_name][orig_dim]
+                        if isinstance(dim_value, str):
+                            shape_parts.append(dim_value)
+                        else:
+                            shape_parts.append(str(dim_value))
             else:
                 # No permutation, use original dimension order
                 shape_parts = []
                 for i in range(num_dims):
                     if i != int(dim):  # Skip the dimension to be squeezed
-                        shape_parts.append(f"{source_tensor_name}_dim{i}")
+                        dim_value = self.tensor_shapes[source_tensor_name][i]
+                        if isinstance(dim_value, str):
+                            shape_parts.append(dim_value)
+                        else:
+                            shape_parts.append(str(dim_value))
             
             # Pass shape directly as tuple to tl.reshape
             shape_tuple = f"({', '.join(shape_parts)})"
             code += f"{indent}{temp_var} = tl.reshape({tensor_expr}, {shape_tuple})\n"
         else:
             # Fallback: simple assignment with comment
+            if os.environ.get("TRITON_GEN_DEBUG") == "1":
+                print(
+                    "[TRITON_GEN_DEBUG] squeeze fallback "
+                    f"source_tensor_name={source_tensor_name} "
+                    f"child_type={child.node_type}"
+                )
             code += f"{indent}{temp_var} = {tensor_expr}  # squeeze dim {dim} (fallback)\n"
         
         # Store temp var in node for parent operations
@@ -4062,7 +4221,7 @@ def {kernel_name}(
             elif tensor_node.node_type == NodeType.TENSOR:
                 # Handle (tensor name) case
                 return tensor_node.children[0].value
-        elif node.node_type == NodeType.PERMUTE3:
+        elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE]:
             # Permute operation - infer from its child
             return self._infer_tensor_name(node.children[0])
         elif node.node_type == NodeType.UNSQUEEZE:
@@ -4092,14 +4251,32 @@ def {kernel_name}(
         
         # If child doesn't have temp_var yet, generate it
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3]:
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
                 child_code = self._generate_node(child)
                 if child_code and not child_code.endswith('\n'):
                     child_code += '\n'
         
         # Get the tensor expression
+        tensor_expr = None
         if hasattr(child, 'temp_var'):
             tensor_expr = child.temp_var
+        else:
+            if self._contains_loads(child):
+                child_code += self._generate_loads_separately(child)
+                if child_code and not child_code.endswith('\n'):
+                    child_code += '\n'
+                tensor_expr = self._generate_node_without_loads(child)
+            else:
+                tensor_expr = self._generate_node(child)
+        if not tensor_expr:
+            if os.environ.get("TRITON_GEN_DEBUG") == "1":
+                print(
+                    "[TRITON_GEN_DEBUG] unsqueeze missing tensor_expr "
+                    f"child_type={child.node_type} "
+                    f"has_temp_var={hasattr(child, 'temp_var')} "
+                    f"child_code={repr(child_code)}"
+                )
+            raise ValueError(f"Expected tensor expression for {child.node_type} node in unsqueeze")
         
         # Get the dimension to unsqueeze
         dim = self._generate_node(node.children[1])

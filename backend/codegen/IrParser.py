@@ -123,6 +123,7 @@ class IRParser:
             'dummy': NodeType.DUMMY,
             'elem': NodeType.ELEM,
             'permute3': NodeType.PERMUTE3,
+            "transpose": NodeType.TRANSPOSE,
             'squeeze': NodeType.SQUEEZE,
             'unsqueeze': NodeType.UNSQUEEZE,
             'const_tile': NodeType.CONST_TILE,
