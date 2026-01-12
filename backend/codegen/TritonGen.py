@@ -2323,6 +2323,10 @@ def {kernel_name}(
             return self._generate_binary_op(node, "*")
         elif node.node_type == NodeType.DIV:
             return self._generate_binary_op(node, "/")
+        elif node.node_type == NodeType.MAX:
+            return self._generate_binary_func(node, "tl.maximum")
+        elif node.node_type == NodeType.MIN:
+            return self._generate_binary_func(node, "tl.minimum")
         elif node.node_type == NodeType.MATMUL:
             return self._generate_matmul(node)
         elif node.node_type == NodeType.EXP:
@@ -2335,6 +2339,10 @@ def {kernel_name}(
             return self._generate_unary_op(node, "tl.sigmoid")
         elif node.node_type == NodeType.RSUM:
             return self._generate_reduce_sum(node)
+        elif node.node_type == NodeType.RMAX:
+            return self._generate_reduce_max(node)
+        elif node.node_type == NodeType.RMIN:
+            return self._generate_reduce_min(node)
         elif node.node_type == NodeType.BCAST:
             return self._generate_broadcast(node)
         elif node.node_type == NodeType.CONCAT:
@@ -3285,6 +3293,29 @@ def {kernel_name}(
             return f"({left} {op} {right})"
         else:
             return f"({left} {op} {right}).to(tl.float16)"
+
+    def _generate_binary_func(self, node: ASTNode, func: str) -> str:
+        """Generate binary function call (e.g., tl.maximum, tl.minimum)."""
+        left_child = node.children[0]
+        right_child = node.children[1]
+
+        if hasattr(left_child, 'temp_var'):
+            left = left_child.temp_var
+        else:
+            left = self._generate_node(left_child)
+
+        if hasattr(right_child, 'temp_var'):
+            right = right_child.temp_var
+        else:
+            right = self._generate_node(right_child)
+
+        exp_tensors = getattr(self, 'exp_tensors', set())
+        current_tensor = getattr(self, 'current_store_tensor', None)
+
+        if current_tensor and current_tensor in exp_tensors:
+            return f"{func}({left}, {right})"
+        else:
+            return f"{func}({left}, {right}).to(tl.float16)"
     
     def _generate_unary_op(self, node: ASTNode, op: str) -> str:
         """Generate unary operation"""
@@ -3432,6 +3463,28 @@ def {kernel_name}(
             # Generate the child expression
             tensor = self._generate_node(child)
             return f"tl.sum({tensor}, axis={axis}, dtype=tl.float16)"
+
+    def _generate_reduce_max(self, node: ASTNode) -> str:
+        """Generate reduce max operation"""
+        child = node.children[0]
+        axis = self._generate_node(node.children[1])
+
+        if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
+            return f"tl.max({child.temp_var}, axis={axis})"
+        else:
+            tensor = self._generate_node(child)
+            return f"tl.max({tensor}, axis={axis})"
+
+    def _generate_reduce_min(self, node: ASTNode) -> str:
+        """Generate reduce min operation"""
+        child = node.children[0]
+        axis = self._generate_node(node.children[1])
+
+        if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
+            return f"tl.min({child.temp_var}, axis={axis})"
+        else:
+            tensor = self._generate_node(child)
+            return f"tl.min({tensor}, axis={axis})"
     
     def _generate_broadcast(self, node: ASTNode) -> str:
         """Generate broadcast operation
@@ -3804,8 +3857,8 @@ def {kernel_name}(
         return False
     
     def _contains_reduce_sum(self, node: ASTNode) -> bool:
-        """Check if node contains reduce sum operations"""
-        if node.node_type == NodeType.RSUM:
+        """Check if node contains reduce operations"""
+        if node.node_type in [NodeType.RSUM, NodeType.RMAX, NodeType.RMIN]:
             return True
         for child in node.children:
             if isinstance(child, ASTNode) and self._contains_reduce_sum(child):
@@ -3845,6 +3898,10 @@ def {kernel_name}(
             return node.temp_var if hasattr(node, 'temp_var') else self._generate_node(node)
         elif node.node_type in [NodeType.ADD, NodeType.SUB, NodeType.MUL, NodeType.DIV]:
             return self._generate_binary_op(node, {NodeType.ADD: '+', NodeType.SUB: '-', NodeType.MUL: '*', NodeType.DIV: '/'}[node.node_type])
+        elif node.node_type == NodeType.MAX:
+            return self._generate_binary_func(node, "tl.maximum")
+        elif node.node_type == NodeType.MIN:
+            return self._generate_binary_func(node, "tl.minimum")
         elif node.node_type == NodeType.MATMUL:
             # Handle matmul specially - check if it has a temp_var from nested processing
             if hasattr(node, 'temp_var'):
@@ -3865,6 +3922,22 @@ def {kernel_name}(
             else:
                 child_expr = self._generate_node_without_loads(child)
                 return f"tl.sum({child_expr}, axis={axis}, dtype=tl.float16)"
+        elif node.node_type == NodeType.RMAX:
+            child = node.children[0]
+            axis = self._generate_node(node.children[1])
+            if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
+                return f"tl.max({child.temp_var}, axis={axis})"
+            else:
+                child_expr = self._generate_node_without_loads(child)
+                return f"tl.max({child_expr}, axis={axis})"
+        elif node.node_type == NodeType.RMIN:
+            child = node.children[0]
+            axis = self._generate_node(node.children[1])
+            if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
+                return f"tl.min({child.temp_var}, axis={axis})"
+            else:
+                child_expr = self._generate_node_without_loads(child)
+                return f"tl.min({child_expr}, axis={axis})"
         elif node.node_type == NodeType.BCAST:
             # Handle broadcast specially
             return self._generate_broadcast(node)
