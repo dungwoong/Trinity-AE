@@ -726,6 +726,16 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),
+        TileLang::Max(_) => format!(
+            "(max {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::Min(_) => format!(
+            "(min {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
 
         TileLang::Exp(_) => format!("(exp {})", children.get(0).unwrap_or(&"?".to_string())),
 
@@ -745,6 +755,16 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
 
         TileLang::ReduceSum(_) => format!(
             "(rsum {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::ReduceMin(_) => format!(
+            "(rmin {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::ReduceMax(_) => format!(
+            "(rmax {} {})",
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),

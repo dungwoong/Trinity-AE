@@ -950,6 +950,12 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         TileLang::Div(children) => {
             TileLang::Div([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
+        TileLang::Max(children) => {
+            TileLang::Max([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::Min(children) => {
+            TileLang::Min([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
         TileLang::Exp(child) => TileLang::Exp(old_to_new_id[child]),
         TileLang::Sqr(child) => TileLang::Sqr(old_to_new_id[child]),
         TileLang::Sqrt(child) => TileLang::Sqrt(old_to_new_id[child]),
@@ -959,6 +965,12 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         }
         TileLang::ReduceSum(children) => {
             TileLang::ReduceSum([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::ReduceMin(children) => {
+            TileLang::ReduceMin([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::ReduceMax(children) => {
+            TileLang::ReduceMax([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
         TileLang::Concat(children) => TileLang::Concat([
             old_to_new_id[&children[0]],
