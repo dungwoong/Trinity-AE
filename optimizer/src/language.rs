@@ -49,6 +49,7 @@ define_language! {
 
         "transpose" = Transpose(Id),
         "permute3" = Permute3([Id; 4]), // permute(A, 0, 2, 1)
+        "permute4" = Permute4([Id; 5]), // permute(A, 0, 2, 1, 3)
         "squeeze" = Squeeze([Id; 2]), // squeeze(A, axis)
         "unsqueeze" = Unsqueeze([Id; 2]), // unsqueeze(A, axis)
         "dummy" = Dummy,
@@ -810,6 +811,45 @@ impl Analysis<TileLang> for LoopAnalysis {
                         if axes.iter().all(|a| a.is_some()) {
                             let mut result_dims = vec![Dimension::Concrete(0); 3];
                             for i in 0..3 {
+                                if let Some(src_idx) = axes[i] {
+                                    if src_idx < input_shape.dims.len() {
+                                        result_dims[i] = input_shape.dims[src_idx].clone();
+                                    }
+                                }
+                            }
+                            Some(TensorShape::new_with_dims(result_dims))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Permute4([input, axis0, axis1, axis2, axis3]) => {
+                // Permute reorders 4D dimensions according to specified axes
+                let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
+                    if input_shape.dims.len() >= 4 {
+                        let axes: Vec<Option<usize>> = vec![axis0, axis1, axis2, axis3]
+                            .into_iter()
+                            .map(|axis_id| {
+                                egraph[*axis_id].nodes.iter().find_map(|n| match n {
+                                    TileLang::Num(val) => Some(*val as usize),
+                                    _ => None,
+                                })
+                            })
+                            .collect();
+
+                        if axes.iter().all(|a| a.is_some()) {
+                            let mut result_dims = vec![Dimension::Concrete(0); 4];
+                            for i in 0..4 {
                                 if let Some(src_idx) = axes[i] {
                                     if src_idx < input_shape.dims.len() {
                                         result_dims[i] = input_shape.dims[src_idx].clone();

@@ -991,6 +991,13 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
             old_to_new_id[&children[2]],
             old_to_new_id[&children[3]],
         ]),
+        TileLang::Permute4(children) => TileLang::Permute4([
+            old_to_new_id[&children[0]],
+            old_to_new_id[&children[1]],
+            old_to_new_id[&children[2]],
+            old_to_new_id[&children[3]],
+            old_to_new_id[&children[4]],
+        ]),
         TileLang::Squeeze(children) => {
             TileLang::Squeeze([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }

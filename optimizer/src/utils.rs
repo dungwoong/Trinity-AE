@@ -825,6 +825,7 @@ fn get_enode_type_name(enode: &TileLang) -> String {
         TileLang::Concat(_) => "Concat".to_string(),
         TileLang::Broadcast(_) => "Broadcast".to_string(),
         TileLang::Permute3(_) => "Permute3".to_string(),
+        TileLang::Permute4(_) => "Permute4".to_string(),
         TileLang::Squeeze(_) => "Squeeze".to_string(),
         TileLang::Unsqueeze(_) => "Unsqueeze".to_string(),
         TileLang::Dummy => "Dummy".to_string(),

@@ -118,6 +118,7 @@ fn format_node_with_ids(_egraph: &EGraph<TileLang, LoopAnalysis>, node: &TileLan
             Broadcast(_) => "bcast",
             Transpose(_) => "transpose",
             Permute3(_) => "permute3",
+            Permute4(_) => "permute4",
             Squeeze(_) => "squeeze",
             Unsqueeze(_) => "unsqueeze",
             Dummy => "dummy",
@@ -367,6 +368,15 @@ fn parse_node(
             }
             "permute3" if child_ids.len() >= 4 => {
                 Permute3([child_ids[0], child_ids[1], child_ids[2], child_ids[3]])
+            }
+            "permute4" if child_ids.len() >= 5 => {
+                Permute4([
+                    child_ids[0],
+                    child_ids[1],
+                    child_ids[2],
+                    child_ids[3],
+                    child_ids[4],
+                ])
             }
             "squeeze" if child_ids.len() >= 2 => Squeeze([child_ids[0], child_ids[1]]),
             "unsqueeze" if child_ids.len() >= 2 => Unsqueeze([child_ids[0], child_ids[1]]),

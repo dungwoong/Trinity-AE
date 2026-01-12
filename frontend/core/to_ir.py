@@ -137,6 +137,19 @@ def ast_to_lisp(node, level=0, role_map=None):
     elif isinstance(node, T.Permute3):
         return f"{prefix}(permute3 {to_inline(node.val)} {node.d0} {node.d1} {node.d2})"
     elif isinstance(node, T.GenericCall):
+        if node.func_name == "transpose":
+            args = node.args
+            if len(args) == 5:
+                return (
+                    f"{prefix}(permute4 {to_inline(args[0])} "
+                    f"{to_inline(args[1])} {to_inline(args[2])} "
+                    f"{to_inline(args[3])} {to_inline(args[4])})"
+                )
+            if len(args) == 4:
+                return (
+                    f"{prefix}(permute3 {to_inline(args[0])} "
+                    f"{to_inline(args[1])} {to_inline(args[2])} {to_inline(args[3])})"
+                )
         args_str = " ".join([to_inline(arg) for arg in node.args])
         return f"{prefix}({node.func_name} {args_str})"
     elif isinstance(node, T.Take):

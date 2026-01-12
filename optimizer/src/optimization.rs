@@ -102,6 +102,7 @@ pub fn run_until_saturated(
                 TileLang::Broadcast(_) => "bcast",
                 TileLang::Transpose(_) => "transpose",
                 TileLang::Permute3(_) => "permute3",
+                TileLang::Permute4(_) => "permute4",
                 TileLang::Squeeze(_) => "squeeze",
                 TileLang::Unsqueeze(_) => "unsqueeze",
                 TileLang::Dummy => "dummy",

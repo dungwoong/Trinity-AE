@@ -794,6 +794,14 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
             children.get(2).unwrap_or(&"?".to_string()),
             children.get(3).unwrap_or(&"?".to_string())
         ),
+        TileLang::Permute4(_) => format!(
+            "(permute4 {} {} {} {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string()),
+            children.get(2).unwrap_or(&"?".to_string()),
+            children.get(3).unwrap_or(&"?".to_string()),
+            children.get(4).unwrap_or(&"?".to_string())
+        ),
 
         TileLang::Squeeze(_) => format!(
             "(squeeze {} {})",
