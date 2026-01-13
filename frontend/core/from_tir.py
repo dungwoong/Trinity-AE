@@ -1895,8 +1895,7 @@ def _convert_to_ast(
                     missing = [i for i in range(len(out_indices)) if i not in mapping]
                     value: T.ASTNode = node
                     for axis in missing:
-                        if not _axis_is_one(out_shape, axis):
-                            value = T.Broadcast(value, axis)
+                        value = T.Broadcast(value, axis)
                     return value
                 if len(load_indices) == len(out_indices):
                     const_axes = []

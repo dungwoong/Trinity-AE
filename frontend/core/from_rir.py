@@ -16,6 +16,26 @@ def build_main_func(relax_mod, primfunc_nodes: List[T.PrimFunc], apply_alloc: bo
     const_map = {}
     call_counts: dict[str, int] = {}
 
+    def _fulltile_index(rank: int) -> T.Index:
+        return T.Index([T.FullTile() for _ in range(rank)])
+
+    def _make_identity_primfunc(name: str, input_info: T.TensorInfo, output_info: T.TensorInfo) -> T.PrimFunc:
+        rank = len(output_info.shape)
+        out_index = _fulltile_index(rank)
+        if rank != len(input_info.shape):
+            in_index = _fulltile_index(len(input_info.shape))
+        else:
+            in_index = out_index
+        store = T.Store(T.Tensor(output_info.name), T.Load(T.Tensor(input_info.name), in_index), out_index)
+        return T.PrimFunc(
+            name=name,
+            input_tensors=[input_info],
+            output_tensor=output_info,
+            spatial_axes=[],
+            root_node=store,
+            allocated_tensors=[],
+        )
+
     for param in main_func.params:
         info = _struct_info_to_tensor_info(param.struct_info, param.name_hint)
         input_tensors.append(info)
@@ -43,6 +63,24 @@ def build_main_func(relax_mod, primfunc_nodes: List[T.PrimFunc], apply_alloc: bo
                             )
                     tuple_values.append(val)
                 value_map[binding.var.name_hint] = tuple_values
+                continue
+            if isinstance(call, relax.Constant):
+                const_info = _expr_to_value(call, value_map, const_counter, const_map, input_tensors)
+                if const_info is None:
+                    continue
+                out_var = binding.var
+                out_info = _struct_info_to_tensor_info(out_var.struct_info, out_var.name_hint)
+                intermediate_tensors.append(out_info)
+                primfunc = _make_identity_primfunc(f"const_assign_{out_info.name}", const_info, out_info)
+                calls.append(
+                    T.PrimFuncCall(
+                        primfunc=primfunc,
+                        out_var_tensor=out_info,
+                        input_tensors=[const_info],
+                        call_index=1,
+                    )
+                )
+                value_map[out_info.name] = out_info
                 continue
             if not isinstance(call, relax.Call):
                 continue
