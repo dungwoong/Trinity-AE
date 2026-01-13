@@ -960,6 +960,7 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         TileLang::Sqr(child) => TileLang::Sqr(old_to_new_id[child]),
         TileLang::Sqrt(child) => TileLang::Sqrt(old_to_new_id[child]),
         TileLang::Sigmoid(child) => TileLang::Sigmoid(old_to_new_id[child]),
+        TileLang::Erf(child) => TileLang::Erf(old_to_new_id[child]),
         TileLang::Matmul(children) => {
             TileLang::Matmul([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }

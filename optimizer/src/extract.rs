@@ -746,6 +746,7 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
         TileLang::Sigmoid(_) => {
             format!("(sigmoid {})", children.get(0).unwrap_or(&"?".to_string()))
         }
+        TileLang::Erf(_) => format!("(erf {})", children.get(0).unwrap_or(&"?".to_string())),
 
         TileLang::Matmul(_) => format!(
             "(* {} {})",

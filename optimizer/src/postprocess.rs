@@ -610,7 +610,11 @@ pub fn expr_depends_on_recexpr(expr: &RecExpr<TileLang>, node: &TileLang, loop_v
         | TileLang::Matmul([a, b]) => {
             depends_on_id_recexpr(expr, *a, loop_var) || depends_on_id_recexpr(expr, *b, loop_var)
         }
-        TileLang::Exp(a) | TileLang::Sqr(a) | TileLang::Sqrt(a) | TileLang::Sigmoid(a) => {
+        TileLang::Exp(a)
+        | TileLang::Sqr(a)
+        | TileLang::Sqrt(a)
+        | TileLang::Sigmoid(a)
+        | TileLang::Erf(a) => {
             depends_on_id_recexpr(expr, *a, loop_var)
         }
         TileLang::ReduceSum([a, b])

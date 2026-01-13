@@ -43,6 +43,7 @@ define_language! {
         "sqr" = Sqr(Id), // square(a)
         "sqrt" = Sqrt(Id), // sqrt(a)
         "sigmoid" = Sigmoid(Id), // sigmoid(a)
+        "erf" = Erf(Id), // erf(a)
 
         "concat" = Concat([Id; 3]), // concat(a, b, axis)
         "bcast" = Broadcast([Id; 2]), // broadcast(a, axis)
@@ -686,6 +687,17 @@ impl Analysis<TileLang> for LoopAnalysis {
             }
             TileLang::Sigmoid(arg) => {
                 // Sigmoid is element-wise, preserves input shape
+                let tensor_shape = x(arg).tensor_shape.clone();
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Erf(arg) => {
+                // Erf is element-wise, preserves input shape
                 let tensor_shape = x(arg).tensor_shape.clone();
 
                 Self::Data {

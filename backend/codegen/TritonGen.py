@@ -2338,6 +2338,8 @@ def {kernel_name}(
             return self._generate_unary_op(node, "tl.sqrt")
         elif node.node_type == NodeType.SIGMOID:
             return self._generate_unary_op(node, "tl.sigmoid")
+        elif node.node_type == NodeType.ERF:
+            return self._generate_unary_op(node, "tl.libdevice.erf")
         elif node.node_type == NodeType.RSUM:
             return self._generate_reduce_sum(node)
         elif node.node_type == NodeType.RMAX:
@@ -3417,7 +3419,7 @@ def {kernel_name}(
         current_tensor = getattr(self, 'current_store_tensor', None)
         
         # For exp, sqrt, and sigmoid operations, convert input to float32
-        if op in ["tl.exp", "tl.sqrt", "tl.sigmoid"]:
+        if op in ["tl.exp", "tl.sqrt", "tl.sigmoid", "tl.libdevice.erf"]:
             return f"{op}({operand}.to(tl.float32)).to(tl.float16)"
         else:
             # Don't add .to(tl.float16) for fp32 tensors
@@ -4034,6 +4036,8 @@ def {kernel_name}(
             return self._generate_unary_op(node, "tl.sqrt")
         elif node.node_type == NodeType.SIGMOID:
             return self._generate_unary_op(node, "tl.sigmoid")
+        elif node.node_type == NodeType.ERF:
+            return self._generate_unary_op(node, "tl.libdevice.erf")
         else:
             return self._generate_node(node)
     

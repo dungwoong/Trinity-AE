@@ -89,19 +89,19 @@ class IRBenchmark:
     def create_test_tensors(self):
         """Create random test tensors for benchmarking."""
         self.tensors = {}
-        output_types = {"output", "intermediate"}
+        zero_init_types = {"output", "intermediate"}
         softmax_maxelem_value = -340282346638528859811704183484516925440.0
 
         for name, shape in self.tensor_shapes.items():
             tensor_type = self.tensor_types.get(name, "input")
-            is_output = tensor_type in output_types
+            is_zero_init = tensor_type in zero_init_types
 
             if "T_softmax_maxelem" in name:
                 self.tensors[name] = torch.full(
                     shape, softmax_maxelem_value, dtype=torch.float16, device=self.device
                 )
                 continue
-            if is_output:
+            if is_zero_init:
                 self.tensors[name] = torch.zeros(shape, dtype=torch.float16, device=self.device)
             else:
                 self.tensors[name] = torch.randn(shape, dtype=torch.float16, device=self.device).clamp(-1, 1) * 0.01

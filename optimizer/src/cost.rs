@@ -95,7 +95,8 @@ impl FineGrainedCostModel {
             TileLang::Sqr(input)
             | TileLang::Sqrt(input)
             | TileLang::Exp(input)
-            | TileLang::Sigmoid(input) => {
+            | TileLang::Sigmoid(input)
+            | TileLang::Erf(input) => {
                 // Scale down by 1000 to prevent overflow
                 let cost = self.get_unary_flops(egraph, *input, 10);
                 // if cost != 0 {

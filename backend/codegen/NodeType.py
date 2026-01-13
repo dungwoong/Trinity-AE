@@ -21,6 +21,7 @@ class NodeType(Enum):
     SQR = "sqr"
     SQRT = "sqrt"
     SIGMOID = "sigmoid"
+    ERF = "erf"
     MAX = "max"
     MIN = "min"
     RMAX = "rmax"
