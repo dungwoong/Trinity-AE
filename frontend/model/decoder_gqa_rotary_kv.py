@@ -118,7 +118,7 @@ def build_model_and_inputs():
         "inline_shape_op": True,
         "inline_elementwise_op": True,
         "remove_short_loop_threshold": 64,
-        "decompose_nested_op_ratio": 0.3,
+        "decompose_nested_op_ratio": 0.0,
     }
 
 
@@ -130,5 +130,5 @@ if __name__ == "__main__":
         inline_shape_op=cfg.get("inline_shape_op", True),
         inline_elementwise_op=cfg.get("inline_elementwise_op", True),
         remove_short_loop_threshold=cfg.get("remove_short_loop_threshold", 64),
-        decompose_nested_op_ratio=cfg.get("decompose_nested_op_ratio", 0.3),
+        decompose_nested_op_ratio=cfg.get("decompose_nested_op_ratio", 0.0),
     )

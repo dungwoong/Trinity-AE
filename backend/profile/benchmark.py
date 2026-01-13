@@ -90,7 +90,7 @@ class IRBenchmark:
         """Create random test tensors for benchmarking."""
         self.tensors = {}
         zero_init_types = {"output", "intermediate"}
-        softmax_maxelem_value = -340282346638528859811704183484516925440.0
+        softmax_maxelem_value = float(torch.finfo(torch.float16).min)
 
         for name, shape in self.tensor_shapes.items():
             tensor_type = self.tensor_types.get(name, "input")
@@ -202,9 +202,8 @@ class IRBenchmark:
             for name in tensor_params:
                 if name in self.tensors and self.tensor_types.get(name) in {"output", "intermediate"}:
                     self.tensors[name].zero_()
-                elif name in self.tensors and not self.tensor_types:
-                    if name in {'C', 'C_exp', 'C_sum', 'K', 'K1', 'K2', 'O', 'O1', 'Q', 'Q1', 'Q2', 'V', 'V1', 'V2'}:
-                        self.tensors[name].zero_()
+                    if "T_softmax_maxelem" in name:
+                        self.tensors[name].fill_(float(torch.finfo(torch.float16).min))
             
             # Build argument list based on metadata
             args = []

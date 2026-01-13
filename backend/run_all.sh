@@ -24,10 +24,14 @@ models=(
   "Roco"
 )
 
+# Default cost/kern if not provided by env.
+cost="${cost:-6}"
+kern="${kern:-2}"
+
 for model_name in "${models[@]}"; do
-  echo "==> ${model_name}"
+  echo "==> ${model_name} (cost=${cost}, kern=${kern})"
   python -m profile.benchmark \
-    --ir "../frontend/outputs/trinity/${model_name}/ir.txt" \
+    --ir "../optimizer/expressions/${model_name}_cost${cost}_kern${kern}.txt" \
     --shapes "../frontend/outputs/trinity/${model_name}/shapes.json"
   echo
 done

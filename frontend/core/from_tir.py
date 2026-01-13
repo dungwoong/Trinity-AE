@@ -8,7 +8,7 @@ def build_primfunc_nodes(
     tir_mod,
     tmp_ratio: float = 0.3,
     remove_short_loop_threshold: int = 64,
-    decompose_ops: bool = False,
+    decompose_ops: bool = True,
     debug: bool = False,
 ) -> List[T.PrimFunc]:
     primfunc_nodes: List[T.PrimFunc] = []

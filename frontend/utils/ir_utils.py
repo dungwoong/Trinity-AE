@@ -333,39 +333,23 @@ def normalize_main_func_axes(main_func: T.MainFunc) -> T.MainFunc:
         visit(root_node)
         return tiles
 
+    def _is_tile_constant(tile: str) -> bool:
+        if not tile.startswith("tile_"):
+            return False
+        return tile[len("tile_"):].isdigit()
+
     def tile_compatible(axis_tile: Optional[str], group_tiles: set[Optional[str]]) -> bool:
         if axis_tile is None:
             return None in group_tiles
-        return axis_tile in group_tiles
+        if _is_tile_constant(axis_tile):
+            return axis_tile in group_tiles
+        # Treat any tile variable as compatible with other tile variables.
+        return any(t is not None and not _is_tile_constant(t) for t in group_tiles)
 
-    def match_group(
+    def access_compatible(
         access: dict[str, set[int]],
         group_access: dict[str, set[int]],
-        axis_tile: Optional[str],
-        group_tiles: set[Optional[str]],
-    ) -> int:
-        if not tile_compatible(axis_tile, group_tiles):
-            return -1
-        shared = set(access.keys()) & set(group_access.keys())
-        if not shared:
-            return -1
-        for tensor in shared:
-            if access[tensor] != group_access[tensor]:
-                return -1
-        return len(shared)
-
-    def match_group_by_range(
-        access: dict[str, set[int]],
-        group_access: dict[str, set[int]],
-        axis_range: tuple[Optional[int], Optional[int]],
-        group_ranges: set[tuple[Optional[int], Optional[int]]],
-        axis_tile: Optional[str],
-        group_tiles: set[Optional[str]],
     ) -> bool:
-        if axis_range not in group_ranges:
-            return False
-        if not tile_compatible(axis_tile, group_tiles):
-            return False
         shared = set(access.keys()) & set(group_access.keys())
         for tensor in shared:
             if access[tensor] != group_access[tensor]:
@@ -422,24 +406,18 @@ def normalize_main_func_axes(main_func: T.MainFunc) -> T.MainFunc:
 
             best_idx = None
             best_score = -1
-            if access:
-                for idx, group in enumerate(canonical_groups):
-                    score = match_group(access, group["access"], axis_tile, group["tiles"])
-                    if score > best_score:
-                        best_score = score
-                        best_idx = idx
-            if best_idx is None:
-                for idx, group in enumerate(canonical_groups):
-                    if match_group_by_range(
-                        access,
-                        group["access"],
-                        axis_range,
-                        group["ranges"],
-                        axis_tile,
-                        group["tiles"],
-                    ):
-                        best_idx = idx
-                        break
+            for idx, group in enumerate(canonical_groups):
+                if axis_range not in group["ranges"]:
+                    continue
+                if not tile_compatible(axis_tile, group["tiles"]):
+                    continue
+                if not access_compatible(access, group["access"]):
+                    continue
+                shared = set(access.keys()) & set(group["access"].keys())
+                score = len(shared)
+                if score > best_score:
+                    best_score = score
+                    best_idx = idx
 
             if best_idx is None:
                 name = axis_pool[axis_index] if axis_index < len(axis_pool) else f"a{axis_index}"
@@ -1131,66 +1109,82 @@ def inline_elementwise_op_calls(main_func: T.MainFunc) -> T.MainFunc:
     intermediate_tensors = list(main_func.intermediate_tensors)
     tensor_info_map = _build_tensor_info_map(main_func)
 
-    def _extract_operand(
-        expr: T.ASTNode,
-        store_index: T.Index,
-    ) -> dict[str, object] | None:
-        if isinstance(expr, T.Load):
-            if expr.index != store_index:
-                return None
-            return {"type": "tensor", "name": expr.tensor.name}
-        if isinstance(expr, T.Const):
-            return {"type": "const", "value": expr.value}
-        return None
-
     def _extract_elementwise_op(store: T.Store) -> dict[str, object] | None:
         if not isinstance(store.index, T.Index):
             return None
-        val = store.value
-        if isinstance(val, (T.Add, T.Sub, T.Mul, T.Div, T.Max, T.Min, T.GenericBinary)):
-            left = _extract_operand(val.left, store.index)
-            right = _extract_operand(val.right, store.index)
-            if left is None or right is None:
+        store_index = store.index
+        needed_inputs: set[str] = set()
+
+        def visit(expr: T.ASTNode):
+            if isinstance(expr, T.Load):
+                if expr.index != store_index:
+                    return None
+                needed_inputs.add(expr.tensor.name)
+                return ("load", expr.tensor.name)
+            if isinstance(expr, T.Const):
+                return ("const", expr.value)
+            if isinstance(expr, (T.Add, T.Sub, T.Mul, T.Div, T.Max, T.Min, T.GenericBinary)):
+                left = visit(expr.left)
+                right = visit(expr.right)
+                if left is None or right is None:
+                    return None
+                return ("binary", type(expr), getattr(expr, "op", None), left, right)
+            if isinstance(expr, (T.Exp, T.Sqr, T.Sqrt, T.Sigmoid, T.Cast)):
+                inner = visit(expr.val)
+                if inner is None:
+                    return None
+                return ("unary", type(expr), expr.dtype if isinstance(expr, T.Cast) else None, inner)
+            if isinstance(expr, T.GenericCall):
+                if len(expr.args) != 1:
+                    return None
+                if expr.func_name not in ("erf", "abs"):
+                    return None
+                inner = visit(expr.args[0])
+                if inner is None:
+                    return None
+                return ("generic_unary", expr.func_name, inner)
+            return None
+
+        template = visit(store.value)
+        if template is None:
+            return None
+        return {"template": template, "needed_inputs": needed_inputs}
+
+    def _build_expr(template: tuple, index: T.Index) -> T.ASTNode | None:
+        tag = template[0]
+        if tag == "load":
+            return T.Load(T.Tensor(template[1]), index)
+        if tag == "const":
+            return T.Const(template[1])
+        if tag == "binary":
+            _, cls, op, left, right = template
+            left_expr = _build_expr(left, index)
+            right_expr = _build_expr(right, index)
+            if left_expr is None or right_expr is None:
                 return None
-            return {
-                "kind": type(val),
-                "op": getattr(val, "op", None),
-                "lhs": left,
-                "rhs": right,
-            }
-        if isinstance(val, (T.Exp, T.Sqr, T.Sqrt, T.Sigmoid, T.Cast)):
-            inner = _extract_operand(val.val, store.index)
-            if inner is None:
+            if cls is T.GenericBinary:
+                return T.GenericBinary(op, left_expr, right_expr)
+            return cls(left_expr, right_expr)
+        if tag == "unary":
+            _, cls, dtype, inner = template
+            inner_expr = _build_expr(inner, index)
+            if inner_expr is None:
                 return None
-            return {
-                "kind": type(val),
-                "dtype": val.dtype if isinstance(val, T.Cast) else None,
-                "arg": inner,
-            }
+            if cls is T.Cast:
+                return T.Cast(dtype, inner_expr)
+            return cls(inner_expr)
+        if tag == "generic_unary":
+            _, func_name, inner = template
+            inner_expr = _build_expr(inner, index)
+            if inner_expr is None:
+                return None
+            return T.GenericCall(func_name, [inner_expr])
         return None
-
-    def _operand_to_expr(operand: dict[str, object], index: T.Index) -> T.ASTNode:
-        if operand["type"] == "tensor":
-            return T.Load(T.Tensor(operand["name"]), index)
-        return T.Const(operand["value"])
-
-    def _inline_expr(index: T.Index, op_info: dict[str, object]) -> T.ASTNode | None:
-        kind = op_info["kind"]
-        if "lhs" in op_info:
-            left = _operand_to_expr(op_info["lhs"], index)
-            right = _operand_to_expr(op_info["rhs"], index)
-            if kind is T.GenericBinary:
-                return T.GenericBinary(op_info["op"], left, right)
-            return kind(left, right)
-        inner = _operand_to_expr(op_info["arg"], index)
-        if kind is T.Cast:
-            return T.Cast(op_info["dtype"], inner)
-        return kind(inner)
 
     def _inline_loads_with_elementwise(node: T.ASTNode, dst_name: str, op_info: dict[str, object]) -> T.ASTNode:
         if isinstance(node, T.Load) and node.tensor.name == dst_name:
             if isinstance(node.index, T.Index):
-                expr = _inline_expr(node.index, op_info)
+                expr = _build_expr(op_info["template"], node.index)
                 if expr is not None:
                     return expr
             return node
@@ -1306,11 +1300,7 @@ def inline_elementwise_op_calls(main_func: T.MainFunc) -> T.MainFunc:
                 continue
             replaced_any = True
 
-            needed_inputs: set[str] = set()
-            for key in ("lhs", "rhs", "arg"):
-                operand = op_info.get(key)
-                if isinstance(operand, dict) and operand.get("type") == "tensor":
-                    needed_inputs.add(operand["name"])
+            needed_inputs = set(op_info["needed_inputs"])
             merged_inputs = _merge_input_tensors(
                 call_j.input_tensors,
                 needed_inputs,

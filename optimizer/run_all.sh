@@ -26,6 +26,7 @@ models=(
 
 for model_name in "${models[@]}"; do
   echo "==> TRINITY_MODEL_NAME=$model_name"
-  TRINITY_MODEL_NAME="$model_name" cargo test --test test_custom_model optimize_exported_mainfunc -- --nocapture
+  TRINITY_MODEL_NAME="$model_name" cargo test --test test_custom_model count_all -- --nocapture
   echo
 done
+TRINITY_MODEL_NAME="rmsnorm" cargo test --test test_custom_model optimizer_custom_model -- --nocapture
