@@ -726,6 +726,11 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),
+        TileLang::Le(_) => format!(
+            "(<= {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
         TileLang::Max(_) => format!(
             "(max {} {})",
             children.get(0).unwrap_or(&"?".to_string()),

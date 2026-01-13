@@ -33,6 +33,7 @@ define_language! {
         "-" = Sub([Id; 2]), // a - b
         "x" = Mul([Id; 2]), // a x b
         "/" = Div([Id; 2]), // a / b
+        "<=" = Le([Id; 2]), // a <= b
         "max" = Max([Id; 2]), // max(a, b)
         "min" = Min([Id; 2]), // min(a, b)
         "exp" = Exp(Id), // exp(a)
@@ -290,6 +291,51 @@ impl Analysis<TileLang> for LoopAnalysis {
             },
             TileLang::Add([left, right]) => {
                 // Element-wise operations - resolve wildcards if possible
+                let tensor_shape = match (&x(left).tensor_shape, &x(right).tensor_shape) {
+                    (Some(left_shape), Some(right_shape))
+                        if left_shape.dims.len() == right_shape.dims.len() =>
+                    {
+                        let mut result_dims = Vec::new();
+                        for (l_dim, r_dim) in left_shape.dims.iter().zip(&right_shape.dims) {
+                            match (l_dim, r_dim) {
+                                (Dimension::Concrete(l), Dimension::Concrete(r)) if l == r => {
+                                    result_dims.push(Dimension::Concrete(*l));
+                                }
+                                (Dimension::Wildcard, Dimension::Concrete(r)) => {
+                                    result_dims.push(Dimension::Concrete(*r));
+                                }
+                                (Dimension::Concrete(l), Dimension::Wildcard) => {
+                                    result_dims.push(Dimension::Concrete(*l));
+                                }
+                                (Dimension::Wildcard, Dimension::Wildcard) => {
+                                    result_dims.push(Dimension::Wildcard);
+                                }
+                                _ => {
+                                    return Self::Data {
+                                        is_deleted: HashSet::new(),
+                                        read_set: Vec::new(),
+                                        write_set: Vec::new(),
+                                        tensor_shape: None,
+                                    }
+                                }
+                            }
+                        }
+                        Some(TensorShape::new_with_dims(result_dims))
+                    }
+                    (Some(shape), None) => Some(shape.clone()),
+                    (None, Some(shape)) => Some(shape.clone()),
+                    _ => None,
+                };
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Le([left, right]) => {
+                // Element-wise comparison - preserve input shape
                 let tensor_shape = match (&x(left).tensor_shape, &x(right).tensor_shape) {
                     (Some(left_shape), Some(right_shape))
                         if left_shape.dims.len() == right_shape.dims.len() =>

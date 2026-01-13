@@ -82,6 +82,7 @@ impl FineGrainedCostModel {
             | TileLang::Sub([left, right])
             | TileLang::Mul([left, right])
             | TileLang::Div([left, right])
+            | TileLang::Le([left, right])
             | TileLang::Max([left, right])
             | TileLang::Min([left, right]) => {
                 // Scale down by 1000 to prevent overflow

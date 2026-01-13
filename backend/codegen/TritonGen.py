@@ -2324,6 +2324,8 @@ def {kernel_name}(
             return self._generate_binary_op(node, "*")
         elif node.node_type == NodeType.DIV:
             return self._generate_binary_op(node, "/")
+        elif node.node_type == NodeType.LE:
+            return self._generate_binary_op(node, "<=")
         elif node.node_type == NodeType.MAX:
             return self._generate_binary_func(node, "tl.maximum")
         elif node.node_type == NodeType.MIN:
@@ -3983,8 +3985,15 @@ def {kernel_name}(
         elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # Return the temp variable assigned during operation generation
             return node.temp_var if hasattr(node, 'temp_var') else self._generate_node(node)
-        elif node.node_type in [NodeType.ADD, NodeType.SUB, NodeType.MUL, NodeType.DIV]:
-            return self._generate_binary_op(node, {NodeType.ADD: '+', NodeType.SUB: '-', NodeType.MUL: '*', NodeType.DIV: '/'}[node.node_type])
+        elif node.node_type in [NodeType.ADD, NodeType.SUB, NodeType.MUL, NodeType.DIV, NodeType.LE]:
+            op_map = {
+                NodeType.ADD: '+',
+                NodeType.SUB: '-',
+                NodeType.MUL: '*',
+                NodeType.DIV: '/',
+                NodeType.LE: '<=',
+            }
+            return self._generate_binary_op(node, op_map[node.node_type])
         elif node.node_type == NodeType.MAX:
             return self._generate_binary_func(node, "tl.maximum")
         elif node.node_type == NodeType.MIN:

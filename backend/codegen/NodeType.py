@@ -16,6 +16,7 @@ class NodeType(Enum):
     SUB = "-"
     MUL = "x"
     DIV = "/"
+    LE = "<="
     MATMUL = "*"
     EXP = "exp"
     SQR = "sqr"

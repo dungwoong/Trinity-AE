@@ -112,6 +112,7 @@ class IRParser:
             '-': NodeType.SUB,
             'x': NodeType.MUL,
             '/': NodeType.DIV,
+            '<=': NodeType.LE,
             '*': NodeType.MATMUL,
             'exp': NodeType.EXP,
             'sqr': NodeType.SQR,

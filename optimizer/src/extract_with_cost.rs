@@ -950,6 +950,9 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         TileLang::Div(children) => {
             TileLang::Div([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
+        TileLang::Le(children) => {
+            TileLang::Le([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
         TileLang::Max(children) => {
             TileLang::Max([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }

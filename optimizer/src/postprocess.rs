@@ -605,6 +605,7 @@ pub fn expr_depends_on_recexpr(expr: &RecExpr<TileLang>, node: &TileLang, loop_v
         | TileLang::Sub([a, b])
         | TileLang::Mul([a, b])
         | TileLang::Div([a, b])
+        | TileLang::Le([a, b])
         | TileLang::Max([a, b])
         | TileLang::Min([a, b])
         | TileLang::Matmul([a, b]) => {

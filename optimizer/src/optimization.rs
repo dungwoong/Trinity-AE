@@ -88,6 +88,7 @@ pub fn run_until_saturated(
                 TileLang::Sub(_) => "-",
                 TileLang::Mul(_) => "x",
                 TileLang::Div(_) => "/",
+                TileLang::Le(_) => "<=",
                 TileLang::Max(_) => "max",
                 TileLang::Min(_) => "min",
                 TileLang::Exp(_) => "exp",

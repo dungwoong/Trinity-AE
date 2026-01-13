@@ -815,6 +815,7 @@ fn get_enode_type_name(enode: &TileLang) -> String {
         TileLang::Sub(_) => "Sub".to_string(),
         TileLang::Mul(_) => "Mul".to_string(),
         TileLang::Div(_) => "Div".to_string(),
+        TileLang::Le(_) => "Le".to_string(),
         TileLang::Max(_) => "Max".to_string(),
         TileLang::Min(_) => "Min".to_string(),
         TileLang::Exp(_) => "Exp".to_string(),
