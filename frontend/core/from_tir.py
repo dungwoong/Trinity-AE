@@ -8,6 +8,7 @@ def build_primfunc_nodes(
     tir_mod,
     tmp_ratio: float = 0.3,
     remove_short_loop_threshold: int = 64,
+    decompose_ops: bool = False,
     debug: bool = False,
 ) -> List[T.PrimFunc]:
     primfunc_nodes: List[T.PrimFunc] = []
@@ -40,25 +41,28 @@ def build_primfunc_nodes(
         tensor_info_map = {t.name: t for t in input_tensors + [output_tensor] + allocated_tensors}
 
         tmp_tensors: List[T.TensorInfo] = []
-        func_name_lower = func_name.lower()
-        exclude_ops = (
-            "reshape",
-            "sum",
-            "matmul",
-            "broadcast",
-            "transpose",
-            "expand_dims",
-            "multiply",
-            "divide",
-            "add",
-            "tir_exp",
-            "concat",
-            "mean",
-        )
-        if not any(op in func_name_lower for op in exclude_ops):
-            root_node, tmp_tensors = decompose_operations(root_node, tensor_info_map, ratio=tmp_ratio)
-        if tmp_tensors:
-            allocated_tensors.extend(tmp_tensors)
+        if decompose_ops:
+            func_name_lower = func_name.lower()
+            exclude_ops = (
+                "reshape",
+                "sum",
+                "matmul",
+                "broadcast",
+                "transpose",
+                "expand_dims",
+                "multiply",
+                "divide",
+                "add",
+                "tir_exp",
+                "concat",
+                "mean",
+            )
+            if not any(op in func_name_lower for op in exclude_ops):
+                root_node, tmp_tensors = decompose_operations(
+                    root_node, tensor_info_map, ratio=tmp_ratio
+                )
+            if tmp_tensors:
+                allocated_tensors.extend(tmp_tensors)
         root_node = remove_short_loop_nodes(root_node, threshold=remove_short_loop_threshold)
 
 

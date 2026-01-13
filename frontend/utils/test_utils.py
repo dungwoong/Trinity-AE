@@ -16,6 +16,14 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
 
     axis_usage: Dict[str, Dict[str, Set[int]]] = {}
     loop_sizes: Dict[str, Tuple[Optional[int], Optional[int]]] = {}
+    current_tensor: List[Optional[str]] = [None]
+
+    def _add_error(msg: str) -> None:
+        tensor = current_tensor[0]
+        if tensor:
+            errors.append(f"{msg} (tensor '{tensor}')")
+        else:
+            errors.append(msg)
 
     def _record_axis_usage(index: T.Index, tensor_name: str) -> None:
         for dim, idx in enumerate(index.indices):
@@ -24,6 +32,17 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
 
     def _dim_token(kind: str, name: str) -> Dim:
         return (kind, name)
+
+    def _format_dim(dim: Dim) -> str:
+        if isinstance(dim, tuple):
+            kind, name = dim
+            if kind == "bcast":
+                return "bcast"
+            return f"{kind}_{name}"
+        return str(dim)
+
+    def _format_shape(shape: List[Dim]) -> str:
+        return "[" + ", ".join(_format_dim(dim) for dim in shape) + "]"
 
     def _index_shape(tensor: str, index: T.Index) -> Optional[List[Dim]]:
         shape = tensor_shapes.get(tensor)
@@ -78,18 +97,18 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
     def _check_index(tensor: str, index: T.Index) -> None:
         shape = tensor_shapes.get(tensor)
         if shape is not None and len(index.indices) != len(shape):
-            errors.append(
+            _add_error(
                 f"Tensor '{tensor}' rank {len(shape)} vs index rank {len(index.indices)}"
             )
         for idx in index.indices:
             if not isinstance(idx, (T.Tile, T.FullTile, T.ConstTile, T.Elem, T.TileOffset)):
-                errors.append(
+                _add_error(
                     f"Invalid index node for tensor '{tensor}': {type(idx)}"
                 )
         if shape is not None:
             for dim, idx in enumerate(index.indices):
                 if shape[dim] == 1 and not isinstance(idx, (T.FullTile, T.Const, T.ConstTile, T.TileOffset, T.Elem)):
-                    errors.append(
+                    _add_error(
                         f"Tensor '{tensor}' dim {dim} is 1 but index is {type(idx)}"
                     )
 
@@ -105,90 +124,96 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
             left = _infer_shape(node.left)
             right = _infer_shape(node.right)
             if left is None or right is None:
-                errors.append("Cannot infer shape for elementwise op")
+                _add_error("Cannot infer shape for elementwise op")
                 return None
             if not left:
                 return right
             if not right:
                 return left
             if not _shapes_match(left, right):
-                errors.append(f"Elementwise shape mismatch: {left} vs {right}")
+                _add_error(
+                    f"Elementwise shape mismatch: {_format_shape(left)} vs {_format_shape(right)}"
+                )
             return left
         if isinstance(node, T.Matmul):
             left = _infer_shape(node.left)
             right = _infer_shape(node.right)
             if left is None or right is None:
-                errors.append("Cannot infer shape for matmul")
+                _add_error("Cannot infer shape for matmul")
                 return None
             if len(left) < 2 or len(right) < 2:
-                errors.append(f"Matmul expects >=2D shapes, got {left} and {right}")
+                _add_error(
+                    f"Matmul expects >=2D shapes, got {_format_shape(left)} and {_format_shape(right)}"
+                )
                 return None
             if len(left) != len(right):
-                errors.append(f"Matmul rank mismatch: {left} vs {right}")
+                _add_error(f"Matmul rank mismatch: {_format_shape(left)} vs {_format_shape(right)}")
                 return None
             if left[:-2] != right[:-2]:
-                errors.append(f"Matmul batch mismatch: {left[:-2]} vs {right[:-2]}")
+                _add_error(
+                    f"Matmul batch mismatch: {_format_shape(left[:-2])} vs {_format_shape(right[:-2])}"
+                )
             if not _dims_match(left[-1], right[-2]):
-                errors.append(f"Matmul K mismatch: {left[-1]} vs {right[-2]}")
+                _add_error(f"Matmul K mismatch: {left[-1]} vs {right[-2]}")
             return left[:-2] + [left[-2], right[-1]]
         if isinstance(node, (T.Exp, T.Sqr, T.Sqrt, T.Sigmoid, T.Cast)):
             return _infer_shape(node.val)
         if isinstance(node, T.Broadcast):
             shape = _infer_shape(node.val)
             if shape is None:
-                errors.append("Cannot infer shape for broadcast")
+                _add_error("Cannot infer shape for broadcast")
                 return None
             axis = node.axis
             if axis < 0 or axis > len(shape):
-                errors.append(f"Broadcast axis out of range: {axis}")
+                _add_error(f"Broadcast axis out of range: {axis}")
                 return None
             return shape[:axis] + [_dim_token("bcast", str(axis))] + shape[axis:]
         if isinstance(node, (T.Squeeze, T.Unsqueeze)):
             shape = _infer_shape(node.val)
             if shape is None:
-                errors.append("Cannot infer shape for squeeze/unsqueeze")
+                _add_error("Cannot infer shape for squeeze/unsqueeze")
                 return None
             axis = node.axis
             if isinstance(node, T.Squeeze):
                 if axis < 0 or axis >= len(shape):
-                    errors.append(f"Squeeze axis out of range: {axis}")
+                    _add_error(f"Squeeze axis out of range: {axis}")
                     return None
                 dim = shape[axis]
                 if dim != 1:
-                    errors.append(f"Squeeze axis {axis} dim is not 1: {dim}")
+                    _add_error(f"Squeeze axis {axis} dim is not 1: {dim}")
                 return shape[:axis] + shape[axis + 1 :]
             if axis < 0 or axis > len(shape):
-                errors.append(f"Unsqueeze axis out of range: {axis}")
+                _add_error(f"Unsqueeze axis out of range: {axis}")
                 return None
             return shape[:axis] + [1] + shape[axis:]
         if isinstance(node, (T.ReduceSum, T.ReduceMax, T.ReduceMin)):
             shape = _infer_shape(node.val)
             if shape is None:
-                errors.append("Cannot infer shape for reduce")
+                _add_error("Cannot infer shape for reduce")
                 return None
             axis = node.axis
             if axis < 0 or axis >= len(shape):
-                errors.append(f"Reduce axis out of range: {axis}")
+                _add_error(f"Reduce axis out of range: {axis}")
                 return None
             return shape[:axis] + shape[axis + 1 :]
         if isinstance(node, T.Concat):
             left = _infer_shape(node.a)
             right = _infer_shape(node.b)
             if left is None or right is None:
-                errors.append("Cannot infer shape for concat")
+                _add_error("Cannot infer shape for concat")
                 return None
             if len(left) != len(right):
-                errors.append(f"Concat rank mismatch: {left} vs {right}")
+                _add_error(f"Concat rank mismatch: {_format_shape(left)} vs {_format_shape(right)}")
                 return None
             axis = node.axis
             if axis < 0 or axis >= len(left):
-                errors.append(f"Concat axis out of range: {axis}")
+                _add_error(f"Concat axis out of range: {axis}")
                 return None
             for i, (la, rb) in enumerate(zip(left, right)):
                 if i == axis:
                     continue
                 if not _dims_match(la, rb):
-                    errors.append(f"Concat dim mismatch at axis {i}: {la} vs {rb}")
+                    _add_error(f"Concat dim mismatch at axis {i}: {_format_dim(la)} vs {_format_dim(rb)}")
             if isinstance(left[axis], int) and isinstance(right[axis], int):
                 out_axis = left[axis] + right[axis]
             else:
@@ -200,14 +225,14 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
             data_shape = _infer_shape(node.data)
             idx_shape = _infer_shape(node.indices)
             if data_shape is None or idx_shape is None:
-                errors.append("Cannot infer shape for take")
+                _add_error("Cannot infer shape for take")
                 return None
             axis = node.axis
             if axis < 0 or axis >= len(data_shape):
-                errors.append(f"Take axis out of range: {axis}")
+                _add_error(f"Take axis out of range: {axis}")
                 return None
             if len(idx_shape) != 1:
-                errors.append(f"Take indices must be 1D, got shape {idx_shape}")
+                _add_error(f"Take indices must be 1D, got shape {_format_shape(idx_shape)}")
                 return None
             if isinstance(node.index, T.Index):
                 return _index_shape(node.data.name, node.index)
@@ -215,10 +240,10 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
         if isinstance(node, T.Permute3):
             shape = _infer_shape(node.val)
             if shape is None:
-                errors.append("Cannot infer shape for permute3")
+                _add_error("Cannot infer shape for permute3")
                 return None
             if len(shape) != 3:
-                errors.append(f"Permute3 expects 3D shape, got {shape}")
+                _add_error(f"Permute3 expects 3D shape, got {_format_shape(shape)}")
                 return None
             return [shape[node.d0], shape[node.d1], shape[node.d2]]
         if isinstance(node, T.GenericCall):
@@ -227,44 +252,50 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
                 true_shape = _infer_shape(node.args[1])
                 false_shape = _infer_shape(node.args[2])
                 if cond_shape is None or true_shape is None or false_shape is None:
-                    errors.append("Cannot infer shape for select")
+                    _add_error("Cannot infer shape for select")
                     return None
                 if not _shapes_match(true_shape, false_shape):
-                    errors.append(f"Select shape mismatch: {true_shape} vs {false_shape}")
+                    _add_error(
+                        f"Select shape mismatch: {_format_shape(true_shape)} vs {_format_shape(false_shape)}"
+                    )
                     return true_shape
                 return true_shape
             if node.func_name in ("max", "min") and len(node.args) == 2:
                 left = _infer_shape(node.args[0])
                 right = _infer_shape(node.args[1])
                 if left is None or right is None:
-                    errors.append(f"Cannot infer shape for {node.func_name}")
+                    _add_error(f"Cannot infer shape for {node.func_name}")
                     return None
                 if not left:
                     return right
                 if not right:
                     return left
                 if not _shapes_match(left, right):
-                    errors.append(f"{node.func_name} shape mismatch: {left} vs {right}")
+                    _add_error(
+                        f"{node.func_name} shape mismatch: {_format_shape(left)} vs {_format_shape(right)}"
+                    )
                 return left
             if node.func_name in ("pow", "power") and len(node.args) >= 1:
                 base_shape = _infer_shape(node.args[0])
                 exp_shape = _infer_shape(node.args[1]) if len(node.args) >= 2 else []
                 if base_shape is None or exp_shape is None:
-                    errors.append("Cannot infer shape for pow")
+                    _add_error("Cannot infer shape for pow")
                     return None
                 if not base_shape:
                     return exp_shape
                 if not exp_shape:
                     return base_shape
                 if not _shapes_match(base_shape, exp_shape):
-                    errors.append(f"pow shape mismatch: {base_shape} vs {exp_shape}")
+                    _add_error(
+                        f"pow shape mismatch: {_format_shape(base_shape)} vs {_format_shape(exp_shape)}"
+                    )
                 return base_shape
             if node.func_name == "erf" and len(node.args) == 1:
                 return _infer_shape(node.args[0])
             if node.func_name == "transpose" and node.args:
                 shape = _infer_shape(node.args[0])
                 if shape is None:
-                    errors.append("Cannot infer shape for transpose")
+                    _add_error("Cannot infer shape for transpose")
                     return None
                 if len(node.args) == 1:
                     if len(shape) == 2:
@@ -275,10 +306,12 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
                     if isinstance(arg, T.Const) and isinstance(arg.value, int):
                         perm.append(arg.value)
                     else:
-                        errors.append("Transpose permutation must be constant ints")
+                        _add_error("Transpose permutation must be constant ints")
                         return shape
                 if len(perm) != len(shape):
-                    errors.append(f"Transpose perm length mismatch: {perm} vs {shape}")
+                    _add_error(
+                        f"Transpose perm length mismatch: {perm} vs {_format_shape(shape)}"
+                    )
                     return shape
                 return [shape[p] for p in perm]
             for arg in node.args:
@@ -333,25 +366,29 @@ def validate_primfunc_ast(primfunc: T.PrimFunc) -> List[str]:
             visit(node.body)
             return
         if isinstance(node, T.Store):
+            current_tensor[0] = node.tensor.name
             if node.tensor.name not in tensor_shapes:
-                errors.append(f"Unknown tensor in store: {node.tensor.name}")
+                _add_error(f"Unknown tensor in store: {node.tensor.name}")
             _check_index(node.tensor.name, node.index)
             _record_axis_usage(node.index, node.tensor.name)
             store_shape = _index_shape(node.tensor.name, node.index)
             value_shape = _infer_shape(node.value)
             if store_shape is None or value_shape is None:
-                errors.append(f"Cannot infer store/value shape for '{node.tensor.name}'")
+                _add_error(f"Cannot infer store/value shape for '{node.tensor.name}'")
             elif not _shapes_match(store_shape, value_shape):
-                errors.append(
+                _add_error(
                     f"Store/value shape mismatch for '{node.tensor.name}': {store_shape} vs {value_shape}"
                 )
             visit(node.value)
+            current_tensor[0] = None
             return
         if isinstance(node, T.Load):
+            current_tensor[0] = node.tensor.name
             if node.tensor.name not in tensor_shapes:
-                errors.append(f"Unknown tensor in load: {node.tensor.name}")
+                _add_error(f"Unknown tensor in load: {node.tensor.name}")
             _check_index(node.tensor.name, node.index)
             _record_axis_usage(node.index, node.tensor.name)
+            current_tensor[0] = None
             return
         if isinstance(node, (T.Add, T.Sub, T.Mul, T.Div, T.Matmul)):
             visit(node.left)
