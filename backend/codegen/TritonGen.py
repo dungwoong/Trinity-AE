@@ -63,6 +63,8 @@ class TritonCodeGen:
         try:
             if isinstance(size_expr, str) and size_expr in self.constants:
                 size_val = self.constants[size_expr]
+            elif isinstance(size_expr, str) and size_expr.isdigit():
+                size_val = int(size_expr)
             elif isinstance(size_expr, (int, float)):
                 size_val = int(size_expr)
             else:
@@ -2341,7 +2343,7 @@ def {kernel_name}(
         elif node.node_type == NodeType.SIGMOID:
             return self._generate_unary_op(node, "tl.sigmoid")
         elif node.node_type == NodeType.ERF:
-            return self._generate_unary_op(node, "tl.libdevice.erf")
+            return self._generate_unary_op(node, "tl.math.erf")
         elif node.node_type == NodeType.CAST:
             return self._generate_cast(node)
         elif node.node_type == NodeType.ABS:
@@ -3425,7 +3427,7 @@ def {kernel_name}(
         current_tensor = getattr(self, 'current_store_tensor', None)
         
         # For exp, sqrt, and sigmoid operations, convert input to float32
-        if op in ["tl.exp", "tl.sqrt", "tl.sigmoid", "tl.libdevice.erf"]:
+        if op in ["tl.exp", "tl.sqrt", "tl.sigmoid", "tl.math.erf"]:
             return f"{op}({operand}.to(tl.float32)).to(tl.float16)"
         else:
             # Don't add .to(tl.float16) for fp32 tensors
@@ -4084,7 +4086,7 @@ def {kernel_name}(
         elif node.node_type == NodeType.SIGMOID:
             return self._generate_unary_op(node, "tl.sigmoid")
         elif node.node_type == NodeType.ERF:
-            return self._generate_unary_op(node, "tl.libdevice.erf")
+            return self._generate_unary_op(node, "tl.math.erf")
         elif node.node_type == NodeType.CAST:
             return self._generate_cast(node)
         elif node.node_type == NodeType.ABS:
@@ -4150,16 +4152,12 @@ def {kernel_name}(
         if not tensor_expr:
             if os.environ.get("TRITON_GEN_DEBUG") == "1":
                 print(
-                    "[TRITON_GEN_DEBUG] squeeze missing tensor_expr "
+                    "[TRITON_GEN_DEBUG] permute missing tensor_expr "
                     f"child_type={child.node_type} "
                     f"has_temp_var={hasattr(child, 'temp_var')} "
                     f"child_code={repr(child_code)}"
                 )
-            raise ValueError(f"Expected tensor expression for {child.node_type} node in squeeze")
-        else:
-            tensor_expr = self._generate_node(child)
-            if tensor_expr is None:
-                raise ValueError(f"Expected tensor expression for {child.node_type} node in unsqueeze")
+            raise ValueError(f"Expected tensor expression for {child.node_type} node in permute")
         
         # Get the permutation dimensions based on number of children
         # if len(node.children) == 4:
