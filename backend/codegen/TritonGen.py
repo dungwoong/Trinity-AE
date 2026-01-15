@@ -4348,8 +4348,19 @@ def {kernel_name}(
         child = node.children[0]
         child_code = ""
         
-        # Ensure the child has a temp_var for permute input
-        child_code, tensor_expr = self._ensure_temp_var(child, "permute3")
+        # If child doesn't have temp_var yet, generate it
+        if not hasattr(child, 'temp_var'):
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
+                child_code = self._generate_node(child)
+                if child_code and not child_code.endswith('\n'):
+                    child_code += '\n'
+        
+        # Get the tensor expression
+        if hasattr(child, 'temp_var'):
+            tensor_expr = child.temp_var
+        else:
+            # This should not happen anymore with proper generation
+            raise ValueError(f"Expected temp_var for {child.node_type} node in permute3")
         
         # Get the permutation dimensions based on number of children
         # if len(node.children) == 4:
@@ -4425,10 +4436,10 @@ def {kernel_name}(
         child_code = ""
 
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
-                child_code = self._generate_node(child)
-                if child_code and not child_code.endswith('\n'):
-                    child_code += '\n'
+            # if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
+            child_code = self._generate_node(child)
+            if child_code and not child_code.endswith('\n'):
+                child_code += '\n'
 
         if hasattr(child, 'temp_var'):
             tensor_expr = child.temp_var
@@ -4481,10 +4492,10 @@ def {kernel_name}(
         child_code = ""
         
         # If child needs generation, do it first
-        if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
-            child_code = self._generate_node(child)
-            if not child_code.endswith('\n'):
-                child_code += '\n'
+        # if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
+        child_code = self._generate_node(child)
+        if not child_code.endswith('\n'):
+            child_code += '\n'
         
         # Get the tensor expression
         if hasattr(child, 'temp_var'):
@@ -4701,13 +4712,16 @@ def {kernel_name}(
         
         # If child doesn't have temp_var yet, generate it
         if not hasattr(child, 'temp_var'):
-            child_code = self._generate_node(child)
-            if child_code and not child_code.endswith('\n'):
-                child_code += '\n'
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
+                child_code = self._generate_node(child)
+                if child_code and not child_code.endswith('\n'):
+                    child_code += '\n'
     
         # Get the tensor expression
         if hasattr(child, 'temp_var'):
             tensor_expr = child.temp_var
+        else:
+            raise ValueError(f"Expected temp_var for {child.node_type} node in unsqueeze")
         
         # Get the dimension to unsqueeze
         dim = self._generate_node(node.children[1])
