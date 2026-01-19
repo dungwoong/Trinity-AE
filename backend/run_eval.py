@@ -194,7 +194,7 @@ def main():
             from baselines import PreNorm, TensorRT_PreNorm, FlashInfer_PreNorm
             trt = TensorRT_PreNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV, device, dtype)
             ti = PreNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV, device, dtype)
-            fi None
+            fi = None
             from flashtensor.h100_prenorm import bench_prenorm
             ft = bench_prenorm
         case "keyformer":

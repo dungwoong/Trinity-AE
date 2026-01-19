@@ -1,30 +1,52 @@
 from codegen.convert_module import convert_ir_to_triton
 import argparse, torch, importlib.util, sys, json
+import time as time_module
+import matplotlib.pyplot as plt
+import numpy as np
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--m", type=str, default="llama", help="Input model type")
-    parser.add_argument("--t", type=str, default="vanilla", help="Benchmark type")
-    parser.add_argument("--n", type=str, default="A", help="Case number for IR")
-    parser.add_argument("--d", type=int, default=0, help="Type device number")
-    args = parser.parse_args()
-    num = args.n
-    model = args.m
-    target = args.t
 
-    device = torch.device(f'cuda:{args.d}' if torch.cuda.is_available() else 'cpu')
+def plot_bar_chart(data, title, output_path, best_color='#DAA520'):
+    """Plot latency bar chart."""
+    labels = list(data.keys())
+    times = list(data.values())
+    best_idx = np.argmin(times)
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+
+    colors = ['#D3D3D3'] * len(labels)
+    colors[best_idx] = best_color
+
+    ax.bar(labels, times, color=colors, edgecolor='black', linewidth=0.5)
+    ax.set_xlabel('High performance kernels', fontsize=11)
+    ax.set_ylabel('Latency (us)', fontsize=11)
+
+    y_min = min(times) * 0.95
+    y_max = max(times) * 1.05
+
+    ax.set_ylim(y_min, y_max)
+
+    ax.set_title(title, fontsize=12)
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    print(f"Figure saved to {output_path}\n")
+
+
+def get_gpu_name():
+    """Get GPU name from CUDA device."""
+    if torch.cuda.is_available():
+        return torch.cuda.get_device_name(0)
+    return "CPU"
+
+
+def run_single_benchmark(target, case, model, device_id, model_configs):
+    """Run a single benchmark and return the latency in microseconds."""
+    device = torch.device(f'cuda:{device_id}' if torch.cuda.is_available() else 'cpu')
     torch.cuda.set_device(device)
     dtype = torch.float16
 
-    output_file = f"figure67/{target}/{target}_{num}.py"
-    module_name = f"{target}_{model}_best"
-
-    # Load model config from JSON
-    with open('./model_configs.json', 'r') as f:
-        model_configs = json.load(f)
-
-    if model not in model_configs:
-        raise ValueError(f"Unknown model: {model}. Available: {list(model_configs.keys())}")
+    output_file = f"figure67/{target}/{target}_{case}.py"
+    module_name = f"{target}_{case}_{model}"
 
     config = model_configs[model]
     M = config['M']
@@ -33,95 +55,20 @@ def main():
     P = config['P'] - M
     H = config['H']
     N4 = config['N4']
-    num_group = config.get('num_group', 4)
-
-    constants = {
-        'M': M,
-        'D': D,
-        'N': N,
-        'P': P,
-        'H': H,
-        'N4': N4,
-    }
-    
-    tensor_shapes = {
-        'X': ('M', 'N'),
-        'X2': ('M',),
-        'X_norm': ('M', 'N'),
-
-        'WQ': ('N', 'N'),
-        'WK': ('N', 'N'),
-        'WV': ('N', 'N'),
-
-        'Q1': ('M', 'N'),
-        'K1': ('M', 'N'),
-        'V1': ('M', 'N'),
-        
-        'Q2': ('M', 'H', 'D'),
-        'K2': ('M', 'H', 'D'),
-        'V2': ('M', 'H', 'D'),
-
-        'K_cache': ('H', 'P+M', 'D'),
-        'V_cache': ('H', 'P+M', 'D'),
-
-        'Q': ('H', 'M', 'D'),
-        'K': ('H', 'M', 'D'),
-        'V': ('H', 'M', 'D'),
-
-        'O': ('H', 'M', 'D'),
-        'O1': ('M', 'H', 'D'),
-        'O2': ('M', 'N'),
-
-        'C': ('H', 'M', 'P+M'),
-        'C_exp': ('H', 'M', 'P+M'),
-        'C_div': ('H', 'M', 'P+M'),
-        'C_sum': ('H', 'M'),
-        'noise': ('H', 'M', 'P+M'),
-        'C_perturb': ('H', 'M', 'P+M'),
-        'C_exp_perturb': ('H', 'M', 'P+M'),
-        'C_sum_perturb': ('H', 'M'),
-        'C_div_perturb': ('H', 'M', 'P+M'),
-        'C_out': ('H', 'P+M'),
-        'C_out1': ('H', 'P+M'),
-        'C_out2': ('H', 'P+M'),
-
-        'Q_norm': ('H', 'M', 'D'),
-        'K_norm': ('H', 'M', 'D'),
-
-        'WO': ('N', 'N'),
-        'attn_O1': ('M', 'N'),
-        'attn_O2': ('M', 'N'),
-        'attn_O3': ('M'),
-        'attn_O_norm': ('M', 'N'),
-        'WFF1a': ('N', 'N4'),
-        'WFF1b': ('N', 'N4'),
-        'FF1a': ('M', 'N4'),
-        'FF1b': ('M', 'N4'),
-        'FF1b_silu': ('M', 'N4'),
-        'FF1': ('M', 'N4'),
-        'FF2': ('M', 'N'),
-        'WFF2': ('N4', 'N'),
-    }
 
     # Set random seed for reproducibility
     torch.manual_seed(42)
     if torch.cuda.is_available():
         torch.cuda.manual_seed(42)
-    
+
     # --------------- Init for Attention ---------------------
     std = 0.01
     X = torch.randn((M, N), device=device, dtype=dtype) * std
-    
     WQ = torch.randn((N, N), device=device, dtype=dtype) * std
     WK = torch.randn((N, N), device=device, dtype=dtype) * std
     WV = torch.randn((N, N), device=device, dtype=dtype) * std
-
     K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
     V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
-
-    K_cache_flashinfer = K_cache.clone().transpose(0, 1).contiguous()
-    V_cache_flashinfer = V_cache.clone().transpose(0, 1).contiguous()
-
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
     # --------------- Additional init for RoCo ---------------------
@@ -149,14 +96,9 @@ def main():
     WO = torch.randn(N, N, dtype=dtype, device=device) * std
     attn_O2 = torch.zeros(M, N, dtype=dtype, device=device)
 
-
-    out = O2.clone()
     ITER = 1000
 
-    # --------------- Trinity ---------------------
-    print("="*50)
-    print(f"Starting Trinity {target}...")
-
+    # --------------- Load and run Trinity ---------------------
     spec = importlib.util.spec_from_file_location(module_name, output_file)
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
@@ -190,9 +132,11 @@ def main():
         else:
             raise ValueError(f"Unknown block parameter: {param}")
 
+    # Warmup
     for _ in range(10):
         forward(*args)
-    
+
+    # Benchmark
     start_event = torch.cuda.Event(enable_timing=True)
     end_event = torch.cuda.Event(enable_timing=True)
     start_event.record()
@@ -201,8 +145,99 @@ def main():
     end_event.record()
     torch.cuda.synchronize()
 
-    time = start_event.elapsed_time(end_event) / ITER
-    print(f"Trinity: {time} ms")
+    latency_ms = start_event.elapsed_time(end_event) / ITER
+    latency_us = latency_ms * 1000  # Convert to microseconds
+
+    return latency_us
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--m", type=str, default="llama", help="Input model type")
+    parser.add_argument("--d", type=int, default=0, help="Device number")
+    parser.add_argument("--trials", type=int, default=3, help="Number of trials per case")
+    args = parser.parse_args()
+
+    model = args.m
+    device_id = args.d
+    num_trials = args.trials
+
+    # Get GPU name from device
+    gpu_name = get_gpu_name()
+    print(f"Detected GPU: {gpu_name}")
+
+    # Load model config
+    with open('./model_configs.json', 'r') as f:
+        model_configs = json.load(f)
+
+    if model not in model_configs:
+        raise ValueError(f"Unknown model: {model}. Available: {list(model_configs.keys())}")
+
+    # Define cases
+    keyformer_cases = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H']
+    roco_cases = ['A', 'B', 'C', 'D', 'E']
+
+    results = {
+        'keyformer': {},
+        'roco': {}
+    }
+
+    # Run Keyformer benchmarks
+    print("=" * 60)
+    print("Running Keyformer benchmarks...")
+    print("=" * 60)
+    for case in keyformer_cases:
+        times = []
+        for trial in range(num_trials):
+            print(f"[Keyformer {case}] Trial {trial + 1}/{num_trials}...", end=" ")
+            latency = run_single_benchmark('keyformer', case, model, device_id, model_configs)
+            times.append(latency)
+            print(f"{latency:.2f} us")
+            time_module.sleep(2)  # Brief pause between trials
+
+        avg_time = sum(times) / len(times)
+        results['keyformer'][case] = avg_time
+        print(f"[Keyformer {case}] Average: {avg_time:.2f} us\n")
+    plot_bar_chart(results['keyformer'], 'KeyFormer', './figure/figure6_keyformer.png', '#DAA520')
+    # Run RoCo benchmarks
+    print("=" * 60)
+    print("Running RoCo benchmarks...")
+    print("=" * 60)
+    for case in roco_cases:
+        times = []
+        for trial in range(num_trials):
+            print(f"[RoCo {case}] Trial {trial + 1}/{num_trials}...", end=" ")
+            latency = run_single_benchmark('roco', case, model, device_id, model_configs)
+            times.append(latency)
+            print(f"{latency:.2f} us")
+            time_module.sleep(2)  # Brief pause between trials
+
+        avg_time = sum(times) / len(times)
+        results['roco'][case] = avg_time
+        print(f"[RoCo {case}] Average: {avg_time:.2f} us\n")
+    plot_bar_chart(results['roco'], 'RoCo', './figure/figure7_roco.png', '#4A90D9')
+    
+    # Print summary
+    print("=" * 60)
+    print("SUMMARY")
+    print("=" * 60)
+    print("\nKeyformer Results (us):")
+    for case, time in results['keyformer'].items():
+        best_marker = " <-- Best" if time == min(results['keyformer'].values()) else ""
+        print(f"  {case}: {time:.2f}{best_marker}")
+
+    print("\nRoCo Results (us):")
+    for case, time in results['roco'].items():
+        best_marker = " <-- Best" if time == min(results['roco'].values()) else ""
+        print(f"  {case}: {time:.2f}{best_marker}")
+
+    # Save results to JSON
+    output_json = './figure/figure67_results.json'
+    with open(output_json, 'w') as f:
+        json.dump(results, f, indent=2)
+    print(f"\nResults saved to {output_json}")
+
+    print("\nDone!")
 
 
 if __name__ == "__main__":
