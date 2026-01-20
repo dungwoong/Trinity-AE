@@ -12,8 +12,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -27,8 +27,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -42,8 +42,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -121,7 +121,7 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -146,7 +146,7 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -175,8 +175,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -196,8 +196,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
                         )
@@ -207,8 +207,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
                         )
@@ -218,8 +218,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
                         )
@@ -283,7 +283,7 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
         (loop 0 2064 tile_p p
             (seq
                 (store (input C)
-                    (*
+                    (@
                         (load (input Q) (index (elem n) (fulltile) (fulltile)))
                         (permute3
                             (load (input K_cache) (index (elem n) (tile p) (fulltile)))
@@ -300,7 +300,7 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
             
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (elem n) (fulltile))) 1)
+                        (* (load (input C_sum) (index (elem n) (fulltile))) 1)
                         (rsum
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             2
@@ -327,8 +327,8 @@ egg::test_fn2! {attacc_fusion, custom_rules(),
                 )
                 (store (input O)
                     (+
-                        (x (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
-                        (*
+                        (* (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
+                        (@
                             (load (input C_div) (index (elem n) (fulltile) (tile p)))
                             (load (input V_cache) (index (elem n) (tile p) (fulltile)))
                         )
@@ -350,8 +350,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -365,8 +365,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -380,8 +380,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -459,7 +459,7 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -484,7 +484,7 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -513,8 +513,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -534,8 +534,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
                         )
@@ -545,8 +545,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
                         )
@@ -556,8 +556,8 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
                         )
@@ -621,7 +621,7 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2064 tile_p p
             (seq
                 (store (input C)
-                    (*
+                    (@
                         (load (input Q) (index (elem n) (fulltile) (fulltile)))
                         (permute3
                             (load (input K_cache) (index (elem n) (tile p) (fulltile)))
@@ -638,7 +638,7 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
             
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (elem n) (fulltile))) 1)
+                        (* (load (input C_sum) (index (elem n) (fulltile))) 1)
                         (rsum
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             2
@@ -653,9 +653,9 @@ egg::test_fn2! {attacc_assoc, custom_rules(),
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
+                    (* (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
                     (/
-                        (*
+                        (@
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             (load (input V_cache) (index (elem n) (tile p) (fulltile)))
                         )
@@ -708,7 +708,7 @@ egg::test_fn2! {attn_assoc, rules(),
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -733,7 +733,7 @@ egg::test_fn2! {attn_assoc, rules(),
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -762,8 +762,8 @@ egg::test_fn2! {attn_assoc, rules(),
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -791,7 +791,7 @@ egg::test_fn2! {attn_assoc, rules(),
             (loop 0 2064 tile_p p
                 (seq
                     (store (input C)
-                        (*
+                        (@
                             (load (input Q) (index (tile h) (fulltile) (fulltile)))
                             (permute3
                                 (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -807,7 +807,7 @@ egg::test_fn2! {attn_assoc, rules(),
                     )
                     (store (input C_sum)
                         (+
-                            (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                            (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                             (rsum
                                 (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                                 2
@@ -834,8 +834,8 @@ egg::test_fn2! {attn_assoc, rules(),
             (loop 0 2064 tile_p p
                 (store (input O)
                     (+
-                        (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                        (*
+                        (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                        (@
                             (load (input C_div) (index (tile h) (fulltile) (tile p)))
                             (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                         )
@@ -866,7 +866,7 @@ egg::test_fn2! {attn_assoc, rules(),
 //             (loop 0 2064 tile_p p
 //                 (seq
 //                     (store (input C)
-//                         (*
+//                         (@
 //                             (load (input Q) (index (tile h) (fulltile) (fulltile)))
 //                             (permute3
 //                                 (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -882,7 +882,7 @@ egg::test_fn2! {attn_assoc, rules(),
 //                     )
 //                     (store (input C_sum)
 //                         (+
-//                             (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+//                             (* (load (input C_sum) (index (tile h) (fulltile))) 1)
 //                             (rsum
 //                                 (load (input C_exp) (index (tile h) (fulltile) (tile p)))
 //                                 2
@@ -897,8 +897,8 @@ egg::test_fn2! {attn_assoc, rules(),
 //             (loop 0 2064 tile_p p
 //                 (store (input O)
 //                     (+
-//                         (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-//                         (*
+//                         (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+//                         (@
 //                             (load (input C_div) (index (tile h) (fulltile) (tile p)))
 //                             (load (input V_cache) (index (tile h) (tile p) (fulltile)))
 //                         )
@@ -968,8 +968,8 @@ egg::test_fn2! {misc, rules(),
     (loop 0 2064 tile_p p
         (store (input O)
             (+
-                (x (load (input O) (index (fulltile) (fulltile))) 1)
-                (*
+                (* (load (input O) (index (fulltile) (fulltile))) 1)
+                (@
                     (load (input C_div) (index (fulltile) (tile p)))
                     (load (input V_cache) (index (tile p) (fulltile)))
                 )
@@ -985,8 +985,8 @@ egg::test_fn2! {misc, rules(),
 //     (loop 0 2064 tile_p p
 //         (store (input O)
 //             (+
-//                 (x (load (input O) (index (fulltile) (fulltile))) 1)
-//                 (*
+//                 (* (load (input O) (index (fulltile) (fulltile))) 1)
+//                 (@
 //                     (/
 //                         (load (input C_exp) (index (fulltile) (tile p)))
 //                         (bcast
@@ -1020,9 +1020,9 @@ egg::test_fn2! {misc, rules(),
 //     (loop 0 2064 tile_p p
 //         (store (input O)
 //             (+
-//                 (x (load (input O) (index (fulltile) (fulltile))) 1)
+//                 (* (load (input O) (index (fulltile) (fulltile))) 1)
 //                 (/
-//                     (*
+//                     (@
 //                         (load (input C_exp) (index (fulltile) (tile p)))
 //                         (load (input V_cache) (index (tile p) (fulltile)))
 //                     )
@@ -1055,8 +1055,8 @@ egg::test_fn2! {misc, rules(),
     (loop 0 2064 tile_p p
         (store (input O)
             (+
-                (x (load (input O) (index (fulltile) (fulltile))) 1)
-                (*
+                (* (load (input O) (index (fulltile) (fulltile))) 1)
+                (@
                     (load (input C_exp) (index (fulltile) (tile p)))
                     (load (input V_cache) (index (tile p) (fulltile)))
                 )
@@ -1096,8 +1096,8 @@ egg::test_fn2! {misc, rules(),
 //     (loop 0 2064 tile_p p
 //         (store (input O)
 //             (+
-//                 (x (load (input O) (index (fulltile) (fulltile))) 1)
-//                 (*
+//                 (* (load (input O) (index (fulltile) (fulltile))) 1)
+//                 (@
 //                     (load (input C_div) (index (fulltile) (tile p)))
 //                     (load (input V_cache) (index (tile p) (fulltile)))
 //                 )
@@ -1128,7 +1128,7 @@ egg::test_fn2! {debug_lora1, rules(),
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input C)
-                    (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -1138,7 +1138,7 @@ egg::test_fn2! {debug_lora1, rules(),
     (seq
         (loop 0 N tile_n n
             (store (input D)
-                (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -1170,7 +1170,7 @@ egg::test_fn2! {debug_lora1, rules(),
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input C)
-                    (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -1181,7 +1181,7 @@ egg::test_fn2! {debug_lora1, rules(),
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input D)
-                    (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                    (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                     ))
                     (index (fulltile) (fulltile))
@@ -1214,7 +1214,7 @@ egg::test_fn2! {debug_lora1, rules(),
             (seq
                 (loop 0 N tile_n n
                     (store (input C)
-                        (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                        (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                         (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                         ))
                         (index (fulltile) (tile p))
@@ -1223,7 +1223,7 @@ egg::test_fn2! {debug_lora1, rules(),
                 (loop 0 P tile_p p 
                     (loop 0 N tile_n n
                         (store (input D)
-                            (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                            (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                             (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                             ))
                             (index (fulltile) (fulltile))
@@ -1256,7 +1256,7 @@ egg::test_fn2! {debug_lora1, rules(),
         (seq 
             (loop 0 N tile_n n 
                 (store (input C) 
-                    (+ (x (load (input C) (index fulltile (tile p))) 1) 
+                    (+ (* (load (input C) (index fulltile (tile p))) 1) 
                     (* (load (input X) (index fulltile (tile n))) 
                         (load (input W) (index (tile n) (tile p))))) 
                     (index fulltile (tile p))))
@@ -1264,7 +1264,7 @@ egg::test_fn2! {debug_lora1, rules(),
                 (loop 0 P tile_p p 
                     (loop 0 N tile_n n 
                         (store (input D) 
-                            (+ (x 1 (load (input D) (index fulltile fulltile))) 
+                            (+ (* 1 (load (input D) (index fulltile fulltile))) 
                             (* (load (input X) (index fulltile (tile n))) 
                                 (load (input A) (index (tile n) fulltile)))) 
                             (index fulltile fulltile))))
@@ -1334,7 +1334,7 @@ egg::test_fn2! {insertion_test, rules(),
     (loop 0 4544 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -1348,8 +1348,8 @@ egg::test_fn2! {insertion_test, rules(),
             (loop 0 4544 tile_k k
                 (store (tensor Q1,K1,V1)
                     (+
-                        (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ,WK,WV) (index (tile k) (tile n)))
                         )
@@ -1401,7 +1401,7 @@ egg::test_fn2! {insertion_test, rules(),
             (loop 0 4544 tile_k k
                 (store (tensor X2)
                     (+
-                        (x (load (tensor X2) (index (fulltile))) 1)
+                        (* (load (tensor X2) (index (fulltile))) 1)
                         (rsum
                             (sqr (load (input X) (index (fulltile) (tile k))))
                             1
@@ -1414,8 +1414,8 @@ egg::test_fn2! {insertion_test, rules(),
             (loop 0 4544 tile_k k
                 (store (tensor Q1,K1,V1)
                     (+
-                        (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ,WK,WV) (index (tile k) (tile n)))
                         )
@@ -1602,8 +1602,8 @@ fn tmp() {
     (loop 0 2064 tile_p p
         (store (input O)
             (+
-                (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                (*
+                (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                (@
                     (load (input C_div) (index (tile h) (fulltile) (tile p)))
                     (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                 )
@@ -1627,16 +1627,16 @@ fn tmp() {
 egg::test_fn2! {test_default_tiling, default_tiling(),
     "
     (seq
-        (store tmp1 (x A B) (index))
+        (store tmp1 (* A B) (index))
     (seq
-        (store tmp2 (x A C) (index))
+        (store tmp2 (* A C) (index))
         (store O (+ (load tmp1 (index)) (load tmp2 (index))) (index))
     ))
     "
     =>
     "(seq
         (store tmp1 (+ B C) (index))
-        (store O (x A (load tmp1 (index))) (index))
+        (store O (* A (load tmp1 (index))) (index))
     )
     "
 }

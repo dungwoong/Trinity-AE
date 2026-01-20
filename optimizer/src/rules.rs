@@ -41,21 +41,21 @@ pub fn default_tiling() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
     vec![
         rw!("factor-mul-add";
             "(seq
-                (store ?tmp1 (x ?a ?b) ?idx)
+                (store ?tmp1 (* ?a ?b) ?idx)
             (seq
-                (store ?tmp2 (x ?a ?c) ?idx)
+                (store ?tmp2 (* ?a ?c) ?idx)
                 (store ?output (+ (load ?tmp1 ?idx) (load ?tmp2 ?idx)) ?idx)
             ))" =>
             "(seq
                 (store ?tmp1 (+ ?b ?c) ?idx)
-                (store ?output (x ?a (load ?tmp1 ?idx)) ?idx)
+                (store ?output (* ?a (load ?tmp1 ?idx)) ?idx)
             )"
         ),
         rw!("tiling-mul1";
-            "(store ?tmp1 (x A B) ?idx)" => "(tile AB)"
+            "(store ?tmp1 (* A B) ?idx)" => "(tile AB)"
         ),
         rw!("tiling-mul2";
-            "(store ?tmp1 (x A C) ?idx)" => "(tile AC)"
+            "(store ?tmp1 (* A C) ?idx)" => "(tile AC)"
         ),
     ]
 }
@@ -220,23 +220,23 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         ),
         rw!("loop-comm-tail";
             "(seq (loop 0 ?n ?tile_n ?loop_var (seq
-                        (store ?a (+ (x (load ?a ?idx) 1) ?val1) ?idx)
-                        (store ?b (+ (x (load ?b ?idx) 1) ?val2) ?idx)))
+                        (store ?a (+ (* (load ?a ?idx) 1) ?val1) ?idx)
+                        (store ?b (+ (* (load ?b ?idx) 1) ?val2) ?idx)))
             (seq (store ?c (+ (load ?a ?idx) (load ?b ?idx)) ?idx) ?others))"
             =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx)) ?others)"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx)) ?others)"
         ),
         rw!("loop-comm";
             "(seq (loop 0 ?n ?tile_n ?loop_var (seq
-                        (store ?a (+ (x (load ?a ?idx) 1) ?val1) ?idx)
-                        (store ?b (+ (x (load ?b ?idx) 1) ?val2) ?idx)))
+                        (store ?a (+ (* (load ?a ?idx) 1) ?val1) ?idx)
+                        (store ?b (+ (* (load ?b ?idx) 1) ?val2) ?idx)))
                 (store ?c (+ (load ?a ?idx) (load ?b ?idx)) ?idx))"
             =>
-            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx))"
+            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx))"
         ),
         rw!("loop-factor-div";
-            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
                   (store ?b (/ (load ?b ?idx) ?val2) ?idx))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -244,8 +244,8 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
             )
         ),
         rw!("loop-factor-div-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
                   (seq (store ?b (/ (load ?b ?idx) ?val2) ?idx) ?others))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -253,18 +253,18 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
             )
         ),
         rw!("loop-factor-mul";
-            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (x ?val1 ?val2)) ?idx))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-                  (store ?b (x (load ?b ?idx) ?val2) ?idx))"
+            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+                  (store ?b (* (load ?b ?idx) ?val2) ?idx))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
             )
         ),
         rw!("loop-factor-mul-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (x ?val1 ?val2)) ?idx)) ?others)" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-                  (seq (store ?b (x (load ?b ?idx) ?val2) ?idx) ?others))"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+                  (seq (store ?b (* (load ?b ?idx) ?val2) ?idx) ?others))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
@@ -272,8 +272,8 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         ),
         // Index bug. b의 idx가 matmul을 하기 전과 후에 달라진다.
         // rw!("loop-factor-matmul";
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (@ ?val1 ?val2)) ?idx))" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //           (store ?b (* (load ?b ?idx) ?val2) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -281,8 +281,8 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         // rw!("loop-factor-matmul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (@ ?val1 ?val2)) ?idx)) ?others)" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //           (seq (store ?b (* (load ?b ?idx) ?val2) ?idx) ?others))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -291,54 +291,54 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         // ),
 
         // rw!("loop-dist-matmul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //      (seq (store ?c (* (load ?b ?idx) ?val2) ?idx2) ?others))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx2) ?accm) (* ?val1 ?val2)) ?idx2)) ?others)"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx2) ?accm) (@ ?val1 ?val2)) ?idx2)) ?others)"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-matmul";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //       (store ?c (* (load ?b ?idx) ?val2) ?idx2))" =>
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx2) ?accm) (* ?val1 ?val2)) ?idx2))"
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx2) ?accm) (@ ?val1 ?val2)) ?idx2))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-div-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //      (seq (store ?c (/ (load ?b ?idx) ?val2) ?idx) ?others))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-div";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //       (store ?c (/ (load ?b ?idx) ?val2) ?idx))" =>
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx))"
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-mul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-        //      (seq (store ?c (x (load ?b ?idx) ?val2) ?idx) ?others))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (x ?val1 ?val2)) ?idx)) ?others)"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+        //      (seq (store ?c (* (load ?b ?idx) ?val2) ?idx) ?others))" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2")),
         //     )
         // ),
         // rw!("loop-dist-mul";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-        //       (store ?c (x (load ?b ?idx) ?val2) ?idx))" =>
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (x ?val1 ?val2)) ?idx))"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+        //       (store ?c (* (load ?b ?idx) ?val2) ?idx))" =>
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (* ?val1 ?val2)) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2")),
@@ -346,13 +346,13 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         // ),
 
         // rw!("loop-split";
-        //     "(loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (x (load (input ?a) ?idx) 1) ?body) ?idx))" =>
+        //     "(loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (* (load (input ?a) ?idx) 1) ?body) ?idx))" =>
         //     { LoopSplit{
         //         end: var("?end"), tile: var("?tile"), loop_var: var("?loop_var"), a: var("?a"), idx: var("?idx"), body: var("?body"),
         //         new_tile: var("?new_tile"), new_loop_var: var("?new_loop_var"), new_a: var("?new_a"), others: var("?others"),
         //         rhs: "(seq
         //         (dloop 0 ?end ?new_tile ?new_loop_var
-        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (x (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
+        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (* (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
         //         (store (input ?a) (rsum (load (input ?new_a) (index (fulltile) ?idx)) 0) ?idx))".parse().unwrap(),
         //     }}
         //     if and_all!(
@@ -360,13 +360,13 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         // rw!("loop-split-tail";
-        //     "(seq (loop 0 ?end ?tile ?loop_var (store (tensor ?a) (+ (x (load (tensor ?a) ?idx) 1) ?body) ?idx)) ?others)" =>
+        //     "(seq (loop 0 ?end ?tile ?loop_var (store (tensor ?a) (+ (* (load (tensor ?a) ?idx) 1) ?body) ?idx)) ?others)" =>
         //     { LoopSplitTail{
         //         end: var("?end"), tile: var("?tile"), loop_var: var("?loop_var"), a: var("?a"), idx: var("?idx"), body: var("?body"),
         //         new_tile: var("?new_tile"), new_loop_var: var("?new_loop_var"), new_a: var("?new_a"), others: var("?others"),
         //         rhs: "(seq
         //         (dloop 0 ?end ?new_tile ?new_loop_var
-        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (tensor ?new_a) (+ (x (load (tensor ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
+        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (tensor ?new_a) (+ (* (load (tensor ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
         //         (seq (store (tensor ?a) (rsum (load (tensor ?new_a) (index (fulltile) ?idx)) 0) ?idx) ?others))".parse().unwrap(),
         //     }}
         //     if and_all!(
@@ -378,34 +378,34 @@ pub fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         rw!("comm-add";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
         rw!("assoc-add"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
         rw!("assoc-add2"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
-        rw!("comm-mul";  "(x ?a ?b)"        => "(x ?b ?a)"),
-        rw!("assoc-mul"; "(x ?a (x ?b ?c))" => "(x (x ?a ?b) ?c)"),
-        rw!("assoc-mul2"; "(x (x ?a ?b) ?c)" => "(x ?a (x ?b ?c))"),
-        rw!("assoc-matmul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
-        rw!("assoc-matmul2"; "(* (* ?a ?b) ?c)" => "(* ?a (* ?b ?c))"),
-        rw!("assoc-div-matmul"; "(* (/ ?a (bcast ?b ?axis)) ?c)" => "(/ (* ?a ?c) (bcast ?b ?axis))"),
-        rw!("dist-mul-add"; "(x ?a (+ ?b ?c))"        => "(+ (x ?a ?b) (x ?a ?c))"),
-        rw!("dist-mul-sub"; "(x ?a (- ?b ?c))"        => "(- (x ?a ?b) (x ?a ?c))"),
-        rw!("dist-matmul-add"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
-        rw!("dist-matmul-sub"; "(* ?a (- ?b ?c))"        => "(- (* ?a ?b) (* ?a ?c))"),
-        rw!("factor-mul-add"    ; "(+ (x ?a ?b) (x ?a ?c))" => "(x ?a (+ ?b ?c))"),
-        rw!("factor-mul-sub"    ; "(- (x ?a ?b) (x ?a ?c))" => "(x ?a (- ?b ?c))"),
-        rw!("factor-matmul-add"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
-        rw!("factor-matmul-sub"    ; "(- (* ?a ?b) (* ?a ?c))" => "(* ?a (- ?b ?c))"),
-        rw!("exp-mul"; "(x (exp ?a) (exp ?b))" => "(exp (+ ?a ?b))"),
+        rw!("comm-mul";  "(* ?a ?b)"        => "(* ?b ?a)"),
+        rw!("assoc-mul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
+        rw!("assoc-mul2"; "(* (* ?a ?b) ?c)" => "(* ?a (* ?b ?c))"),
+        rw!("assoc-matmul"; "(@ ?a (@ ?b ?c))" => "(@ (@ ?a ?b) ?c)"),
+        rw!("assoc-matmul2"; "(@ (@ ?a ?b) ?c)" => "(@ ?a (@ ?b ?c))"),
+        rw!("assoc-div-matmul"; "(@ (/ ?a (bcast ?b ?axis)) ?c)" => "(/ (@ ?a ?c) (bcast ?b ?axis))"),
+        rw!("dist-mul-add"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
+        rw!("dist-mul-sub"; "(* ?a (- ?b ?c))"        => "(- (* ?a ?b) (* ?a ?c))"),
+        rw!("dist-matmul-add"; "(@ ?a (+ ?b ?c))"        => "(+ (@ ?a ?b) (@ ?a ?c))"),
+        rw!("dist-matmul-sub"; "(@ ?a (- ?b ?c))"        => "(- (@ ?a ?b) (@ ?a ?c))"),
+        rw!("factor-mul-add"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
+        rw!("factor-mul-sub"    ; "(- (* ?a ?b) (* ?a ?c))" => "(* ?a (- ?b ?c))"),
+        rw!("factor-matmul-add"    ; "(+ (@ ?a ?b) (@ ?a ?c))" => "(@ ?a (+ ?b ?c))"),
+        rw!("factor-matmul-sub"    ; "(- (@ ?a ?b) (@ ?a ?c))" => "(@ ?a (- ?b ?c))"),
+        rw!("exp-mul"; "(* (exp ?a) (exp ?b))" => "(exp (+ ?a ?b))"),
         rw!("exp-div"; "(/ (exp ?a) (exp ?b))" => "(exp (- ?a ?b))"),
         rw!("exp0"; "(exp 0)" => "1"),
-        rw!("recip-mul-div"; "(x ?x (/ 1 ?x))" => "1" if is_not_zero(var("?x"))),
+        rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero(var("?x"))),
         rw!("geometry-of-concat"; "(concat (concat ?x ?z 0) (concat ?y ?w 0) 1)" => "(concat (concat ?x ?y 1) (concat ?z ?w 1) 0)"),
         rw!("geometry-of-concat-inv"; "(concat (concat ?x ?y 1) (concat ?z ?w 1) 0)" => "(concat (concat ?x ?z 0) (concat ?y ?w 0) 1)"),
         rw!("operator-comm6"; "(+ (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (+ ?x ?y) (+ ?z ?w) ?a)"),
         rw!("operator-comm6-inv"; "(concat (+ ?x ?y) (+ ?z ?w) ?a)" => "(+ (concat ?x ?z ?a) (concat ?y ?w ?a))"),
-        rw!("operator-comm7"; "(x (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (x ?x ?y) (x ?z ?w) ?a)"),
-        rw!("operator-comm7-inv"; "(concat (x ?x ?y) (x ?z ?w) ?a)" => "(x (concat ?x ?z ?a) (concat ?y ?w ?a))"),
-        rw!("concat-and-matmul0"; "(* ?x (concat ?y ?z 1))" => "(concat (* ?x ?y) (* ?x ?z) 1)"),
-        rw!("concat-and-matmul0-inv"; "(concat (* ?x ?y) (* ?x ?z) 1)" => "(* ?x (concat ?y ?z 1))"),
-        rw!("concat-and-matmul1"; "(+ (* ?a ?b) (* ?c ?d))" => "(* (concat ?a ?c 1) (concat ?b ?d 0))"),
-        rw!("concat-and-matmul1-inv"; "(* (concat ?a ?c 1) (concat ?b ?d 0))" => "(+ (* ?a ?b) (* ?c ?d))"),
+        rw!("operator-comm7"; "(* (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (* ?x ?y) (* ?z ?w) ?a)"),
+        rw!("operator-comm7-inv"; "(concat (* ?x ?y) (* ?z ?w) ?a)" => "(* (concat ?x ?z ?a) (concat ?y ?w ?a))"),
+        rw!("concat-and-matmul0"; "(@ ?x (concat ?y ?z 1))" => "(concat (@ ?x ?y) (@ ?x ?z) 1)"),
+        rw!("concat-and-matmul0-inv"; "(concat (@ ?x ?y) (@ ?x ?z) 1)" => "(@ ?x (concat ?y ?z 1))"),
+        rw!("concat-and-matmul1"; "(+ (@ ?a ?b) (@ ?c ?d))" => "(@ (concat ?a ?c 1) (concat ?b ?d 0))"),
+        rw!("concat-and-matmul1-inv"; "(@ (concat ?a ?c 1) (concat ?b ?d 0))" => "(+ (@ ?a ?b) (@ ?c ?d))"),
     ]
 }
 
@@ -576,24 +576,24 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         ),
         rw!("loop-comm-tail";
             "(seq (loop 0 ?n ?tile_n ?loop_var (seq
-                        (store ?a (+ (x (load ?a ?idx) 1) ?val1) ?idx)
-                        (store ?b (+ (x (load ?b ?idx) 1) ?val2) ?idx)))
+                        (store ?a (+ (* (load ?a ?idx) 1) ?val1) ?idx)
+                        (store ?b (+ (* (load ?b ?idx) 1) ?val2) ?idx)))
             (seq (store ?c (+ (load ?a ?idx) (load ?b ?idx)) ?idx) ?others))"
             =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx)) ?others)"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx)) ?others)"
         ),
         rw!("loop-comm";
             "(seq (loop 0 ?n ?tile_n ?loop_var (seq
-                        (store ?a (+ (x (load ?a ?idx) 1) ?val1) ?idx)
-                        (store ?b (+ (x (load ?b ?idx) 1) ?val2) ?idx)))
+                        (store ?a (+ (* (load ?a ?idx) 1) ?val1) ?idx)
+                        (store ?b (+ (* (load ?b ?idx) 1) ?val2) ?idx)))
                 (store ?c (+ (load ?a ?idx) (load ?b ?idx)) ?idx))"
             =>
-            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx))"
+            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx))"
         ),
         // Index bug. b의 idx가 matmul을 하기 전과 후에 달라진다.
         // rw!("loop-factor-matmul";
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (@ ?val1 ?val2)) ?idx))" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //           (store ?b (* (load ?b ?idx) ?val2) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -601,8 +601,8 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         // rw!("loop-factor-matmul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (@ ?val1 ?val2)) ?idx)) ?others)" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //           (seq (store ?b (* (load ?b ?idx) ?val2) ?idx) ?others))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -610,8 +610,8 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         rw!("loop-factor-div";
-            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
                   (store ?b (/ (load ?b ?idx) ?val2) ?idx))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -619,8 +619,8 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
             )
         ),
         rw!("loop-factor-div-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
                   (seq (store ?b (/ (load ?b ?idx) ?val2) ?idx) ?others))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -628,72 +628,72 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
             )
         ),
         rw!("loop-factor-mul";
-            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (x ?val1 ?val2)) ?idx))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-                  (store ?b (x (load ?b ?idx) ?val2) ?idx))"
+            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+                  (store ?b (* (load ?b ?idx) ?val2) ?idx))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
             )
         ),
         rw!("loop-factor-mul-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (x ?val1 ?val2)) ?idx)) ?others)" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-                  (seq (store ?b (x (load ?b ?idx) ?val2) ?idx) ?others))"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+                  (seq (store ?b (* (load ?b ?idx) ?val2) ?idx) ?others))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
             )
         ),
         // rw!("loop-dist-matmul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //      (seq (store ?c (* (load ?b ?idx) ?val2) ?idx2) ?others))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx2) ?accm) (* ?val1 ?val2)) ?idx2)) ?others)"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx2) ?accm) (@ ?val1 ?val2)) ?idx2)) ?others)"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-matmul";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //       (store ?c (* (load ?b ?idx) ?val2) ?idx2))" =>
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx2) ?accm) (* ?val1 ?val2)) ?idx2))"
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx2) ?accm) (@ ?val1 ?val2)) ?idx2))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-div-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //      (seq (store ?c (/ (load ?b ?idx) ?val2) ?idx) ?others))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-div";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //       (store ?c (/ (load ?b ?idx) ?val2) ?idx))" =>
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx))"
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2"))
         //     )
         // ),
         // rw!("loop-dist-mul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-        //      (seq (store ?c (x (load ?b ?idx) ?val2) ?idx) ?others))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (x ?val1 ?val2)) ?idx)) ?others)"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+        //      (seq (store ?c (* (load ?b ?idx) ?val2) ?idx) ?others))" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2")),
         //     )
         // ),
         // rw!("loop-dist-mul";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-        //       (store ?c (x (load ?b ?idx) ?val2) ?idx))" =>
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (x ?val1 ?val2)) ?idx))"
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+        //       (store ?c (* (load ?b ?idx) ?val2) ?idx))" =>
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (* ?val1 ?val2)) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
         //         is_not_one(var("?val2")),
@@ -701,13 +701,13 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         // ),
 
         // rw!("loop-split";
-        //     "(loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (x (load (input ?a) ?idx) 1) ?body) ?idx))" =>
+        //     "(loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (* (load (input ?a) ?idx) 1) ?body) ?idx))" =>
         //     { LoopSplit{
         //         end: var("?end"), tile: var("?tile"), loop_var: var("?loop_var"), a: var("?a"), idx: var("?idx"), body: var("?body"),
         //         new_tile: var("?new_tile"), new_loop_var: var("?new_loop_var"), new_a: var("?new_a"), others: var("?others"),
         //         rhs: "(seq
         //         (dloop 0 ?end ?new_tile ?new_loop_var
-        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (x (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
+        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (* (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
         //         (store (input ?a) (rsum (load (input ?new_a) (index (fulltile) ?idx)) 0) ?idx))".parse().unwrap(),
         //     }}
         //     if and_all!(
@@ -715,13 +715,13 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         // rw!("loop-split-tail";
-        //     "(seq (loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (x (load (input ?a) ?idx) 1) ?body) ?idx)) ?others)" =>
+        //     "(seq (loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (* (load (input ?a) ?idx) 1) ?body) ?idx)) ?others)" =>
         //     { LoopSplitTail{
         //         end: var("?end"), tile: var("?tile"), loop_var: var("?loop_var"), a: var("?a"), idx: var("?idx"), body: var("?body"),
         //         new_tile: var("?new_tile"), new_loop_var: var("?new_loop_var"), new_a: var("?new_a"), others: var("?others"),
         //         rhs: "(seq
         //         (dloop 0 ?end ?new_tile ?new_loop_var
-        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (x (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
+        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (* (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
         //         (seq (store (input ?a) (rsum (load (input ?new_a) (index (fulltile) ?idx)) 0) ?idx) ?others))".parse().unwrap(),
         //     }}
         //     if and_all!(
@@ -733,33 +733,33 @@ pub fn rules_wo_seqcomm() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         rw!("comm-add";  "(+ ?a ?b)"        => "(+ ?b ?a)"),
         rw!("assoc-add"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
         rw!("assoc-add2"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
-        rw!("comm-mul";  "(x ?a ?b)"        => "(x ?b ?a)"),
-        rw!("assoc-mul"; "(x ?a (x ?b ?c))" => "(x (x ?a ?b) ?c)"),
-        rw!("assoc-mul2"; "(x (x ?a ?b) ?c)" => "(x ?a (x ?b ?c))"),
-        rw!("assoc-matmul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
-        rw!("assoc-matmul2"; "(* (* ?a ?b) ?c)" => "(* ?a (* ?b ?c))"),
-        rw!("assoc-div-matmul"; "(* (/ ?a (bcast ?b ?axis)) ?c)" => "(/ (* ?a ?c) (bcast ?b ?axis))"),
-        rw!("dist-mul-add"; "(x ?a (+ ?b ?c))"        => "(+ (x ?a ?b) (x ?a ?c))"),
-        rw!("dist-mul-sub"; "(x ?a (- ?b ?c))"        => "(- (x ?a ?b) (x ?a ?c))"),
-        rw!("dist-matmul-add"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
-        rw!("dist-matmul-sub"; "(* ?a (- ?b ?c))"        => "(- (* ?a ?b) (* ?a ?c))"),
-        rw!("factor-mul-add"    ; "(+ (x ?a ?b) (x ?a ?c))" => "(x ?a (+ ?b ?c))"),
-        rw!("factor-mul-sub"    ; "(- (x ?a ?b) (x ?a ?c))" => "(x ?a (- ?b ?c))"),
-        rw!("factor-matmul-add"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
-        rw!("factor-matmul-sub"    ; "(- (* ?a ?b) (* ?a ?c))" => "(* ?a (- ?b ?c))"),
-        rw!("exp-mul"; "(x (exp ?a) (exp ?b))" => "(exp (+ ?a ?b))"),
+        rw!("comm-mul";  "(* ?a ?b)"        => "(* ?b ?a)"),
+        rw!("assoc-mul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
+        rw!("assoc-mul2"; "(* (* ?a ?b) ?c)" => "(* ?a (* ?b ?c))"),
+        rw!("assoc-matmul"; "(@ ?a (@ ?b ?c))" => "(@ (@ ?a ?b) ?c)"),
+        rw!("assoc-matmul2"; "(@ (@ ?a ?b) ?c)" => "(@ ?a (@ ?b ?c))"),
+        rw!("assoc-div-matmul"; "(@ (/ ?a (bcast ?b ?axis)) ?c)" => "(/ (@ ?a ?c) (bcast ?b ?axis))"),
+        rw!("dist-mul-add"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
+        rw!("dist-mul-sub"; "(* ?a (- ?b ?c))"        => "(- (* ?a ?b) (* ?a ?c))"),
+        rw!("dist-matmul-add"; "(@ ?a (+ ?b ?c))"        => "(+ (@ ?a ?b) (@ ?a ?c))"),
+        rw!("dist-matmul-sub"; "(@ ?a (- ?b ?c))"        => "(- (@ ?a ?b) (@ ?a ?c))"),
+        rw!("factor-mul-add"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
+        rw!("factor-mul-sub"    ; "(- (* ?a ?b) (* ?a ?c))" => "(* ?a (- ?b ?c))"),
+        rw!("factor-matmul-add"    ; "(+ (@ ?a ?b) (@ ?a ?c))" => "(@ ?a (+ ?b ?c))"),
+        rw!("factor-matmul-sub"    ; "(- (@ ?a ?b) (@ ?a ?c))" => "(@ ?a (- ?b ?c))"),
+        rw!("exp-mul"; "(* (exp ?a) (exp ?b))" => "(exp (+ ?a ?b))"),
         rw!("exp-div"; "(/ (exp ?a) (exp ?b))" => "(exp (- ?a ?b))"),
         rw!("exp0"; "(exp 0)" => "1"),
-        rw!("recip-mul-div"; "(x ?x (/ 1 ?x))" => "1" if is_not_zero(var("?x"))),
+        rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero(var("?x"))),
         rw!("geometry-of-concat"; "(concat (concat ?x ?z 0) (concat ?y ?w 0) 1)" => "(concat (concat ?x ?y 1) (concat ?z ?w 1) 0)"),
         rw!("geometry-of-concat-inv"; "(concat (concat ?x ?y 1) (concat ?z ?w 1) 0)" => "(concat (concat ?x ?z 0) (concat ?y ?w 0) 1)"),
         rw!("operator-comm6"; "(+ (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (+ ?x ?y) (+ ?z ?w) ?a)"),
         rw!("operator-comm6-inv"; "(concat (+ ?x ?y) (+ ?z ?w) ?a)" => "(+ (concat ?x ?z ?a) (concat ?y ?w ?a))"),
-        rw!("operator-comm7"; "(x (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (x ?x ?y) (x ?z ?w) ?a)"),
-        rw!("operator-comm7-inv"; "(concat (x ?x ?y) (x ?z ?w) ?a)" => "(x (concat ?x ?z ?a) (concat ?y ?w ?a))"),
-        rw!("concat-and-matmul0"; "(* ?x (concat ?y ?z 1))" => "(concat (* ?x ?y) (* ?x ?z) 1)"),
-        rw!("concat-and-matmul0-inv"; "(concat (* ?x ?y) (* ?x ?z) 1)" => "(* ?x (concat ?y ?z 1))"),
-        rw!("concat-and-matmul1"; "(+ (* ?a ?b) (* ?c ?d))" => "(* (concat ?a ?c 1) (concat ?b ?d 0))"),
-        rw!("concat-and-matmul1-inv"; "(* (concat ?a ?c 1) (concat ?b ?d 0))" => "(+ (* ?a ?b) (* ?c ?d))"),
+        rw!("operator-comm7"; "(* (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (* ?x ?y) (* ?z ?w) ?a)"),
+        rw!("operator-comm7-inv"; "(concat (* ?x ?y) (* ?z ?w) ?a)" => "(* (concat ?x ?z ?a) (concat ?y ?w ?a))"),
+        rw!("concat-and-matmul0"; "(@ ?x (concat ?y ?z 1))" => "(concat (@ ?x ?y) (@ ?x ?z) 1)"),
+        rw!("concat-and-matmul0-inv"; "(concat (@ ?x ?y) (@ ?x ?z) 1)" => "(@ ?x (concat ?y ?z 1))"),
+        rw!("concat-and-matmul1"; "(+ (@ ?a ?b) (@ ?c ?d))" => "(@ (concat ?a ?c 1) (concat ?b ?d 0))"),
+        rw!("concat-and-matmul1-inv"; "(@ (concat ?a ?c 1) (concat ?b ?d 0))" => "(+ (@ ?a ?b) (@ ?c ?d))"),
     ]
 }

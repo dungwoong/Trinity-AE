@@ -60,8 +60,8 @@ fn extract_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor Q1)
                 (+
-                    (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -75,8 +75,8 @@ fn extract_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor K1)
                 (+
-                    (x (load (tensor K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -90,8 +90,8 @@ fn extract_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor V1)
                 (+
-                    (x (load (tensor V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -169,7 +169,7 @@ fn extract_expressions() {
     (loop 0 32 tile_h h 
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -194,7 +194,7 @@ fn extract_expressions() {
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -224,8 +224,8 @@ fn extract_expressions() {
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -343,7 +343,7 @@ egg::test_fn2! {test_expressions, rules(),
     (loop 0 4096 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (load (tensor X1) (index (fulltile) (tile k)))
                     1
@@ -375,8 +375,8 @@ egg::test_fn2! {test_expressions, rules(),
         (loop 0 4096 tile_k k
             (store (tensor Q1)
                 (+
-                    (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -390,8 +390,8 @@ egg::test_fn2! {test_expressions, rules(),
         (loop 0 4096 tile_k k
             (store (tensor K1)
                 (+
-                    (x (load (tensor K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -405,8 +405,8 @@ egg::test_fn2! {test_expressions, rules(),
         (loop 0 4096 tile_k k
             (store (tensor V1)
                 (+
-                    (x (load (tensor V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -484,7 +484,7 @@ egg::test_fn2! {test_expressions, rules(),
     (loop 0 32 tile_h h 
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -509,7 +509,7 @@ egg::test_fn2! {test_expressions, rules(),
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -539,8 +539,8 @@ egg::test_fn2! {test_expressions, rules(),
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )

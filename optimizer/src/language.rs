@@ -31,10 +31,10 @@ define_language! {
 
         "+" = Add([Id; 2]), // a + b
         "-" = Sub([Id; 2]), // a - b
-        "x" = Mul([Id; 2]), // a x b
+        "*" = Mul([Id; 2]), // a * b (elementwise)
         "/" = Div([Id; 2]), // a / b
         "exp" = Exp(Id), // exp(a)
-        "*" = Matmul([Id; 2]), // a * b
+        "@" = Matmul([Id; 2]), // a @ b (matrix multiplication)
         "rsum" = ReduceSum([Id; 2]), // reduce_sum(a, axis)
         "sqr" = Sqr(Id), // square(a)
         "sqrt" = Sqrt(Id), // sqrt(a)

@@ -9,8 +9,8 @@ fn saturate_gated_mlp_skip_ft() {
             (loop 0 K tile_k k 
                 (store (tensor C1) 
                     (+
-                        (x (load (tensor C1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor C1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W1) (index (tile k) (tile n)))
                         )
@@ -35,8 +35,8 @@ fn saturate_gated_mlp_skip_ft() {
             (loop 0 K tile_k k 
                 (store (tensor C2) 
                     (+
-                        (x (load (tensor C2) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor C2) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W2) (index (tile k) (tile n)))
                         )
@@ -47,7 +47,7 @@ fn saturate_gated_mlp_skip_ft() {
         )
         (loop 0 N tile_n n 
             (store (output O) 
-                (x
+                (*
                     (load (tensor C1_exp) (index (fulltile) (tile n)))
                     (load (tensor C2) (index (fulltile) (tile n)))
                 )
@@ -74,8 +74,8 @@ fn saturate_gated_mlp() {
                 (loop 0 K tile_k k 
                     (store (tensor C1) 
                         (+
-                            (x (load (tensor C1) (index (tile m) (tile n))) 1)
-                            (*
+                            (* (load (tensor C1) (index (tile m) (tile n))) 1)
+                            (@
                                 (load (input X) (index (tile m) (tile k)))
                                 (load (input W1) (index (tile k) (tile n)))
                             )
@@ -104,8 +104,8 @@ fn saturate_gated_mlp() {
                 (loop 0 K tile_k k 
                     (store (input C2) 
                         (+
-                            (x (load (input C2) (index (tile m) (tile n))) 1)
-                            (*
+                            (* (load (input C2) (index (tile m) (tile n))) 1)
+                            (@
                                 (load (input X) (index (tile m) (tile k)))
                                 (load (input W2) (index (tile k) (tile n)))
                             )
@@ -118,7 +118,7 @@ fn saturate_gated_mlp() {
         (loop 0 M tile_m m 
             (loop 0 N tile_n n 
                 (store (output O) 
-                    (x
+                    (*
                         (load (input C1_exp) (index (tile m) (tile n)))
                         (load (input C2) (index (tile m) (tile n)))
                     )
@@ -145,7 +145,7 @@ fn saturate_lora() {
             (loop 0 P tile_p p 
                 (loop 0 N tile_n n
                     (store (input C)
-                        (+ (x (load (input C) (index (tile m) (tile p))) 1)
+                        (+ (* (load (input C) (index (tile m) (tile p))) 1)
                         (* (load (input X) (index (tile m) (tile n))) (load (input W) (index (tile n) (tile p)))
                         ))
                         (index (tile m) (tile p))
@@ -158,7 +158,7 @@ fn saturate_lora() {
             (loop 0 K tile_k k 
                 (loop 0 N tile_n n
                     (store (input D)
-                        (+ (x (load (input D) (index (tile m) (tile k))) 1)
+                        (+ (* (load (input D) (index (tile m) (tile k))) 1)
                         (* (load (input X) (index (tile m) (tile n))) (load (input A) (index (tile n) (tile k)))
                         ))
                         (index (tile m) (tile k))
@@ -171,7 +171,7 @@ fn saturate_lora() {
             (loop 0 P tile_p p 
                 (loop 0 K tile_k k
                     (store (input E)
-                        (+ (x (load (input E) (index (tile m) (tile p))) 1)
+                        (+ (* (load (input E) (index (tile m) (tile p))) 1)
                         (* (load (input D) (index (tile m) (tile k))) (load (input B) (index (tile k) (tile p)))
                         ))
                         (index (tile m) (tile p))
@@ -202,7 +202,7 @@ fn saturate_lora_skip_ft() {
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (tensor C)
-                    (+ (x (load (tensor C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (tensor C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -212,7 +212,7 @@ fn saturate_lora_skip_ft() {
     (seq
         (loop 0 N tile_n n
             (store (tensor D)
-                (+ (x (load (tensor D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (tensor D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -261,8 +261,8 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -276,8 +276,8 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -291,8 +291,8 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -370,7 +370,7 @@ fn saturate_attacc_skip_ft() {
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -395,7 +395,7 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -424,8 +424,8 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -455,7 +455,7 @@ fn saturate_flashattn2_skip_ft() {
         (loop 0 M tile_m m
             (loop 0 N tile_n n 
                 (store (input C) 
-                    (*
+                    (@
                         (load (input Q) (index (tile m) (fulltile)))
                         (load (input K) (index (fulltile) (tile n)))
                     )
@@ -477,7 +477,7 @@ fn saturate_flashattn2_skip_ft() {
             (loop 0 N tile_n n 
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (tile m))) 1)
+                        (* (load (input C_sum) (index (tile m))) 1)
                         (rsum (load (input C_exp) (index (tile m) (tile n))) 1)
                     )
                     (index (tile m))
@@ -500,8 +500,8 @@ fn saturate_flashattn2_skip_ft() {
             (loop 0 N tile_n n 
                 (store (output O)
                     (+
-                        (x (load (output O) (index (tile m) (fulltile))) 1)
-                        (*
+                        (* (load (output O) (index (tile m) (fulltile))) 1)
+                        (@
                             (load (input C_div) (index (tile m) (tile n)))
                             (load (input V) (index (tile n) (fulltile)))
                         )
@@ -521,7 +521,7 @@ fn saturate_flashattn2_skip_ft() {
     //     (loop 0 P tile_p p
     //         (loop 0 N tile_n n
     //             (store (input C)
-    //                 (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+    //                 (+ (* (load (input C) (index (fulltile) (tile p))) 1)
     //                 (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
     //                 ))
     //                 (index (fulltile) (tile p))
@@ -531,7 +531,7 @@ fn saturate_flashattn2_skip_ft() {
     // (seq
     //     (loop 0 N tile_n n
     //         (store (input D)
-    //             (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+    //             (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
     //             (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
     //             ))
     //             (index (fulltile) (fulltile))
@@ -561,13 +561,13 @@ fn saturate_flashattn2_skip_ft() {
     // let expr = "
     // (seq
     //     (loop 0 N tile_n n
-    //         (store (input B) (+ (x (load (input B) (index)) 1) (x 10 (rsum (load (input A) (index (tile n))) 1))) (index))
+    //         (store (input B) (+ (* (load (input B) (index)) 1) (* 10 (rsum (load (input A) (index (tile n))) 1))) (index))
     //     )
     // (seq
     //     (loop 0 N tile_n n
-    //         (store (input B) (+ (x (load (input B) (index)) 1) (x 10 (rsum (load (input A) (index (tile n))) 1))) (index))
+    //         (store (input B) (+ (* (load (input B) (index)) 1) (* 10 (rsum (load (input A) (index (tile n))) 1))) (index))
     //     )
-    //     (store (input B) (x (load (input B) (index)) 20) (index))
+    //     (store (input B) (* (load (input B) (index)) 20) (index))
     // )
     // )
     // ";

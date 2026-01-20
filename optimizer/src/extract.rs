@@ -716,7 +716,7 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
         ),
 
         TileLang::Mul(_) => format!(
-            "(x {} {})",
+            "(* {} {})",
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),
@@ -738,7 +738,7 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
         }
 
         TileLang::Matmul(_) => format!(
-            "(* {} {})",
+            "(@ {} {})",
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),
