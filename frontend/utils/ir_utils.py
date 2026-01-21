@@ -116,9 +116,9 @@ def analyze_axis_access_patterns(primfunc: T.PrimFunc) -> dict[str, dict[str, se
         if isinstance(expr, T.Sub):
             return f"(- {expr_signature(expr.left)} {expr_signature(expr.right)})"
         if isinstance(expr, T.Mul):
-            return f"(x {expr_signature(expr.left)} {expr_signature(expr.right)})"
-        if isinstance(expr, T.Matmul):
             return f"(* {expr_signature(expr.left)} {expr_signature(expr.right)})"
+        if isinstance(expr, T.Matmul):
+            return f"(@ {expr_signature(expr.left)} {expr_signature(expr.right)})"
         if isinstance(expr, T.Take):
             return f"(take {expr_signature(expr.data)} {expr_signature(expr.indices)} {expr.axis} {expr_signature(expr.index)})"
         if isinstance(expr, T.ReduceSum):

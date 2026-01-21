@@ -109,12 +109,12 @@ def ast_to_lisp(node, level=0, role_map=None):
     op_symbol = None
     if isinstance(node, T.Add): op_symbol = "+"
     elif isinstance(node, T.Sub): op_symbol = "-"
-    elif isinstance(node, T.Mul): op_symbol = "x"  # Scalar multiply
+    elif isinstance(node, T.Mul): op_symbol = "*"  # Scalar multiply
     elif isinstance(node, T.Div): op_symbol = "/"
     elif isinstance(node, T.Max): op_symbol = "max"
     elif isinstance(node, T.Min): op_symbol = "min"
     elif isinstance(node, T.GenericBinary): op_symbol = node.op
-    elif isinstance(node, T.Matmul): op_symbol = "*" # Tensor matmul
+    elif isinstance(node, T.Matmul): op_symbol = "@" # Tensor matmul
     
     if op_symbol:
         return f"{prefix}({op_symbol} {to_inline(node.left)} {to_inline(node.right)})"

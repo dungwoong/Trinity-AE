@@ -199,7 +199,7 @@ class Sigmoid(ASTNode):
 
 # --- Tensor Operations ---
 @dataclass
-class Matmul(ASTNode): # Represents "*" (Tensor Matmul)
+class Matmul(ASTNode): # Represents "@" (Tensor Matmul)
     left: ASTNode
     right: ASTNode
 
