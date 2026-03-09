@@ -1,4 +1,5 @@
 from typing import Dict, Tuple, List
+import os
 from .NodeType import NodeType
 from .AstNode import ASTNode
 
@@ -42,6 +43,7 @@ class TritonCodeGen:
         self.sloop_depth = 0  # Track nested sloop depth
         self.stored_accumulators = set()  # Track accumulators that have been stored in loops
         self.current_store_tensor = None  # Track current tensor being stored to detect context
+        self.debug = bool(os.environ.get("TRITON_GEN_DEBUG"))
         
     def _next_power_of_2(self, n):
         """Round up to the next power of 2"""
@@ -55,6 +57,10 @@ class TritonCodeGen:
         while power < n:
             power <<= 1
         return power
+
+    def _debug_log(self, message: str) -> None:
+        if self.debug:
+            print(f"[TritonGen] {message}")
         
     def _get_padded_block_size(self, size_expr):
         """Get padded block size and whether padding was applied"""
@@ -62,6 +68,8 @@ class TritonCodeGen:
         try:
             if isinstance(size_expr, str) and size_expr in self.constants:
                 size_val = self.constants[size_expr]
+            elif isinstance(size_expr, str) and size_expr.isdigit():
+                size_val = int(size_expr)
             elif isinstance(size_expr, (int, float)):
                 size_val = int(size_expr)
             else:
@@ -73,6 +81,15 @@ class TritonCodeGen:
         except:
             # If evaluation fails, return original
             return size_expr, False
+
+    def _get_padded_shape(self, shape_values):
+        padded_parts = []
+        padded_values = []
+        for dim in shape_values:
+            padded_dim, _ = self._get_padded_block_size(dim)
+            padded_parts.append(str(padded_dim))
+            padded_values.append(padded_dim)
+        return padded_parts, padded_values
         
     def _generate_mask_for_index(self, index_node: ASTNode, tensor_name: str) -> tuple:
         """Generate mask code for tensor access if needed
@@ -2323,6 +2340,12 @@ def {kernel_name}(
             return self._generate_binary_op(node, "*")
         elif node.node_type == NodeType.DIV:
             return self._generate_binary_op(node, "/")
+        elif node.node_type == NodeType.LE:
+            return self._generate_binary_op(node, "<=")
+        elif node.node_type == NodeType.MAX:
+            return self._generate_binary_func(node, "tl.maximum")
+        elif node.node_type == NodeType.MIN:
+            return self._generate_binary_func(node, "tl.minimum")
         elif node.node_type == NodeType.MATMUL:
             return self._generate_matmul(node)
         elif node.node_type == NodeType.EXP:
@@ -2333,8 +2356,18 @@ def {kernel_name}(
             return self._generate_unary_op(node, "tl.sqrt")
         elif node.node_type == NodeType.SIGMOID:
             return self._generate_unary_op(node, "tl.sigmoid")
+        elif node.node_type == NodeType.ERF:
+            return self._generate_unary_op(node, "tl.math.erf")
+        elif node.node_type == NodeType.CAST:
+            return self._generate_cast(node)
+        elif node.node_type == NodeType.ABS:
+            return self._generate_unary_op(node, "tl.abs")
         elif node.node_type == NodeType.RSUM:
             return self._generate_reduce_sum(node)
+        elif node.node_type == NodeType.RMAX:
+            return self._generate_reduce_max(node)
+        elif node.node_type == NodeType.RMIN:
+            return self._generate_reduce_min(node)
         elif node.node_type == NodeType.BCAST:
             return self._generate_broadcast(node)
         elif node.node_type == NodeType.CONCAT:
@@ -2355,6 +2388,8 @@ def {kernel_name}(
             return f"{indent}pass  # dummy node"
         elif node.node_type == NodeType.PERMUTE3:
             return self._generate_permute3(node)
+        elif node.node_type == NodeType.TRANSPOSE:
+            return self._generate_transpose(node)
         elif node.node_type == NodeType.SQUEEZE:
             return self._generate_squeeze(node)
         elif node.node_type == NodeType.UNSQUEEZE:
@@ -2639,8 +2674,20 @@ def {kernel_name}(
             return sloop_count[0]
 
         # Add materialization only for tensors used in multiple sloops
+        local_intermediate_tensors = set(self.intermediate_tensors)
+        if hasattr(self, 'cross_sloop_memory_tensors'):
+            local_intermediate_tensors -= self.cross_sloop_memory_tensors
+        local_intermediate_tensors -= self.cross_kernel_tensors
+        if os.environ.get("TRITON_GEN_DEBUG") == "1":
+            print(
+                "[TRITON_GEN_DEBUG] materialize "
+                f"stored_in_sloop={sorted(stored_in_this_sloop)} "
+                f"local_intermediates={sorted(local_intermediate_tensors)} "
+                f"cross_sloop={sorted(getattr(self, 'cross_sloop_memory_tensors', set()))} "
+                f"cross_kernel={sorted(self.cross_kernel_tensors)}"
+            )
         for tensor in sorted(stored_in_this_sloop):
-            if hasattr(self, 'cross_sloop_memory_tensors') and tensor in self.cross_sloop_memory_tensors:
+            if tensor not in local_intermediate_tensors:
                 continue
             # If used in 2+ distinct sloops, needs materialization
             if count_sloops_using_tensor(tensor) >= 2:
@@ -2668,32 +2715,36 @@ def {kernel_name}(
         # (load tensor index)
         tensor_node = node.children[0]
         index_node = node.children[1]
-        
+
         tensor_name = tensor_node.children[0].value
+        node.tensor_shape = self.tensor_shapes.get(tensor_name)
+        node.tensor_shape = self.tensor_shapes.get(tensor_name)
         
         # Skip checking for temporary variables - we don't create them anymore
-        
-        # Check if this is a kernel accumulator - if so, just return the accumulator variable
-        # UNLESS it's also a cross-sloop memory tensor (needs actual load)
-        if tensor_name in self.kernel_accumulators and tensor_name not in self.cross_sloop_memory_tensors:
-            node.temp_var = tensor_name
-            return ""
-        
-        # Check if this is a local intermediate tensor (not cross-kernel and not cross-sloop memory)
-        if (tensor_name in self.intermediate_tensors and 
-            tensor_name not in self.cross_kernel_tensors and
-            not (hasattr(self, 'cross_sloop_memory_tensors') and tensor_name in self.cross_sloop_memory_tensors)):
-            # For local intermediate tensors, directly reference without reshape
-            # tl.dot can handle 3D tensors with batch dimension
-            node.temp_var = tensor_name
-            return ""
         
         # For input/output tensors and cross-kernel tensors, use normal load operation
         # Handle case where index_node is directly FULLTILE (not wrapped in INDEX)
         if index_node.node_type == NodeType.FULLTILE:
             # Wrap the FULLTILE in an INDEX node for proper handling
             index_node = ASTNode(NodeType.INDEX, [index_node])
-        
+
+        node.block_shape = self._infer_block_shape_from_index(index_node, tensor_name)
+
+        # Check if this is a kernel accumulator - if so, just return the accumulator variable
+        # UNLESS it's also a cross-sloop memory tensor (needs actual load)
+        if tensor_name in self.kernel_accumulators and tensor_name not in self.cross_sloop_memory_tensors:
+            node.temp_var = tensor_name
+            return ""
+
+        # Check if this is a local intermediate tensor (not cross-kernel and not cross-sloop memory)
+        if (tensor_name in self.intermediate_tensors and
+            tensor_name not in self.cross_kernel_tensors and
+            not (hasattr(self, 'cross_sloop_memory_tensors') and tensor_name in self.cross_sloop_memory_tensors)):
+            # For local intermediate tensors, directly reference without reshape
+            # tl.dot can handle 3D tensors with batch dimension
+            node.temp_var = tensor_name
+            return ""
+
         offset_expr = self._generate_index(index_node, tensor_name)
         
         # Create a cache key from tensor name and offset expression
@@ -2828,8 +2879,16 @@ def {kernel_name}(
                 code = self._generate_loads_separately(val_node)
                 value_expr = self._generate_node_without_loads(val_node)
             else:
-                value_expr = self._generate_node(val_node)
-            
+                value_code = self._generate_node(val_node)
+                if hasattr(val_node, 'temp_var'):
+                    if value_code:
+                        code += value_code
+                        if not code.endswith('\n'):
+                            code += '\n'
+                    value_expr = val_node.temp_var
+                else:
+                    value_expr = value_code
+
             indent_str = '    ' * self.indent_level
             # Generate accumulation update (not a store operation)
             code += f"{indent_str}{tensor_name} = {value_expr}\n"
@@ -2840,7 +2899,7 @@ def {kernel_name}(
         
         # Check if value is a simple transformation operation (permute, squeeze, unsqueeze)
         # that we can generate inline without temp variable
-        if val_node.node_type in [NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        if val_node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # For these operations, generate them inline and assign directly to target tensor
             if val_node.node_type == NodeType.PERMUTE3:
                 child = val_node.children[0]
@@ -2888,6 +2947,41 @@ def {kernel_name}(
                     perm_strs.append(str(dim))
                 perm_str = f"({', '.join(perm_strs)})"
                 value_expr = f"tl.permute({tensor_expr}, {perm_str})"
+            elif val_node.node_type == NodeType.TRANSPOSE:
+                child = val_node.children[0]
+                # Generate child if needed
+                if not hasattr(child, 'temp_var'):
+                    if child.node_type == NodeType.UNSQUEEZE:
+                        unsqueeze_child = child.children[0]
+                        if not hasattr(unsqueeze_child, 'temp_var'):
+                            child_code = self._generate_node(unsqueeze_child)
+                            if child_code:
+                                code += child_code
+                                if not code.endswith('\n'):
+                                    code += '\n'
+
+                        child_code = self._generate_node(child)
+                        if child_code:
+                            code += child_code
+                            if not code.endswith('\n'):
+                                code += '\n'
+                    else:
+                        child_code = self._generate_node(child)
+                        if child_code:
+                            code += child_code
+                            if not code.endswith('\n'):
+                                code += '\n'
+
+                if hasattr(child, 'temp_var'):
+                    tensor_expr = child.temp_var
+                else:
+                    raise ValueError(f"Expected temp_var for {child.node_type} node")
+
+                perm_dims, perm_str = self._build_transpose_permutation(child, val_node)
+                if len(perm_dims) == 2 and perm_dims == (1, 0):
+                    value_expr = f"tl.trans({tensor_expr})"
+                else:
+                    value_expr = f"tl.permute({tensor_expr}, {perm_str})"
             
             elif val_node.node_type == NodeType.UNSQUEEZE:
                 child = val_node.children[0]
@@ -2900,32 +2994,102 @@ def {kernel_name}(
                 
                 # Get dimension
                 dim = self._generate_node(val_node.children[1])
+                dim_value = None
+                try:
+                    dim_value = int(dim)
+                except (TypeError, ValueError):
+                    dim_value = None
                 
                 value_expr = f"tl.expand_dims({tensor_expr}, {dim})"
+                self._debug_log(
+                    f"inline unsqueeze child={child.node_type} dim={dim} dim_value={dim_value} "
+                    f"child.block_shape={getattr(child, 'block_shape', None)} "
+                    f"child.tensor_shape={getattr(child, 'tensor_shape', None)}"
+                )
+                if hasattr(child, "tensor_shape") and child.tensor_shape and dim_value is not None:
+                    child_shape = list(child.tensor_shape)
+                    if dim_value < 0:
+                        dim_value += len(child_shape) + 1
+                    if 0 <= dim_value <= len(child_shape):
+                        child_shape.insert(dim_value, 1)
+                        val_node.tensor_shape = tuple(child_shape)
+                if hasattr(child, "block_shape") and child.block_shape and dim_value is not None:
+                    block_shape = list(child.block_shape)
+                    dim_index = dim_value
+                    if dim_index < 0:
+                        dim_index += len(block_shape) + 1
+                    if 0 <= dim_index <= len(block_shape):
+                        block_shape.insert(dim_index, 1)
+                        val_node.block_shape = tuple(block_shape)
+                if dim_value is not None:
+                    val_node.unsqueeze_dim = dim_value
+                self._debug_log(
+                    f"inline unsqueeze result block_shape={getattr(val_node, 'block_shape', None)} "
+                    f"tensor_shape={getattr(val_node, 'tensor_shape', None)}"
+                )
             
             elif val_node.node_type == NodeType.SQUEEZE:
                 child = val_node.children[0]
+                squeeze_handled = False
                 # Generate child if needed
-                if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3] and not hasattr(child, 'temp_var'):
+                if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
                     code += self._generate_node(child)
                     if not code.endswith('\n'):
                         code += '\n'
-                
+
                 # Get tensor expression
-                tensor_expr = child.temp_var if hasattr(child, 'temp_var') else self._generate_node(child)
+                if hasattr(child, 'temp_var'):
+                    tensor_expr = child.temp_var
+                else:
+                    raise ValueError(f"Expected temp_var for {child.node_type} node in squeeze")
 
                 # Get dimension (for squeeze, we use reshape instead)
                 # Infer the source tensor name for dimension info
                 source_tensor_name = self._infer_tensor_name(child)
-                
+                squeeze_dim = None
+                try:
+                    squeeze_dim = int(self._generate_node(val_node.children[1]))
+                except (TypeError, ValueError):
+                    squeeze_dim = None
+
+                self._debug_log(
+                    f"inline squeeze child={child.node_type} dim={squeeze_dim} "
+                    f"child.block_shape={getattr(child, 'block_shape', None)} "
+                    f"child.tensor_shape={getattr(child, 'tensor_shape', None)}"
+                )
+
+                if hasattr(child, "block_shape") and child.block_shape and squeeze_dim is not None:
+                    block_shape = list(child.block_shape)
+                    dim_index = squeeze_dim
+                    if dim_index < 0:
+                        dim_index += len(block_shape)
+                    if 0 <= dim_index < len(block_shape):
+                        del block_shape[dim_index]
+                        shape_parts = [str(dim) for dim in block_shape]
+                        shape_str = f"({', '.join(shape_parts)})"
+                        value_expr = f"tl.reshape({tensor_expr}, {shape_str})"
+                        val_node.block_shape = tuple(block_shape)
+                        if hasattr(child, "tensor_shape") and child.tensor_shape:
+                            tensor_shape = list(child.tensor_shape)
+                            dim_idx = squeeze_dim
+                            if dim_idx < 0:
+                                dim_idx += len(tensor_shape)
+                            if 0 <= dim_idx < len(tensor_shape):
+                                del tensor_shape[dim_idx]
+                                val_node.tensor_shape = tuple(tensor_shape)
+                        # Skip tensor_shape-based reshape handling
+                        source_tensor_name = None
+                        squeeze_handled = True
+                        self._debug_log(
+                            f"inline squeeze used block_shape -> {val_node.block_shape} "
+                            f"tensor_shape={getattr(val_node, 'tensor_shape', None)}"
+                        )
+
                 # For squeeze operations, we need to use the source tensor's dimensions
                 # after removing the squeezed dimension
-                if source_tensor_name and source_tensor_name in self.tensor_shapes:
-                    # Get the squeezed dimension
-                    squeeze_dim = int(self._generate_node(val_node.children[1]))
-                    
+                if not squeeze_handled and source_tensor_name and source_tensor_name in self.tensor_shapes:
                     # Check if child was a permute operation to map dimensions correctly
-                    if child.node_type == NodeType.PERMUTE3 and hasattr(child, 'permute_dims'):
+                    if child.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE] and hasattr(child, 'permute_dims'):
                         # Get the permuted dimension order
                         perm_dims = child.permute_dims  # e.g., (1, 0, 2)
                         shape_parts = []
@@ -2963,14 +3127,36 @@ def {kernel_name}(
                                     shape_parts.append(str(dim_value))
                     
                     shape_str = f"({', '.join(shape_parts)})"
-                    value_expr = f"tl.reshape({tensor_expr}, {shape_str})"
-                else:
+                    padded_parts, _ = self._get_padded_shape(shape_values) if shape_values else (shape_parts, shape_values)
+                    padded_shape_str = f"({', '.join(padded_parts)})"
+                    value_expr = f"tl.reshape({tensor_expr}, {padded_shape_str})"
+                elif not squeeze_handled and hasattr(child, "tensor_shape") and child.tensor_shape and squeeze_dim is not None:
+                    child_shape = child.tensor_shape
+                    if squeeze_dim < 0:
+                        squeeze_dim += len(child_shape)
+                    if 0 <= squeeze_dim < len(child_shape):
+                        shape_parts = []
+                        shape_values = []
+                        for i, dim_value in enumerate(child_shape):
+                            if i == squeeze_dim:
+                                continue
+                            if isinstance(dim_value, str):
+                                shape_parts.append(dim_value)
+                            else:
+                                shape_parts.append(str(dim_value))
+                            shape_values.append(dim_value)
+                        shape_str = f"({', '.join(shape_parts)})"
+                        padded_parts, _ = self._get_padded_shape(shape_values) if shape_values else (shape_parts, shape_values)
+                        padded_shape_str = f"({', '.join(padded_parts)})"
+                        value_expr = f"tl.reshape({tensor_expr}, {padded_shape_str})"
+                        if shape_values:
+                            val_node.tensor_shape = tuple(shape_values)
+                elif not squeeze_handled:
                     # Fallback: use source tensor shape after squeeze
                     # For squeeze operation, we need to use the dimensions of the source tensor O
                     # not the output tensor O2
                     if source_tensor_name and source_tensor_name in self.tensor_shapes:
                         # Get source tensor shape and remove squeezed dimension
-                        squeeze_dim = int(self._generate_node(val_node.children[1]))
                         shape_parts = []
                         source_shape = self.tensor_shapes[source_tensor_name]
                         
@@ -2983,7 +3169,9 @@ def {kernel_name}(
                                     shape_parts.append(str(dim_value))
                         
                         shape_str = f"({', '.join(shape_parts)})"
-                        value_expr = f"tl.reshape({tensor_expr}, {shape_str})"
+                        padded_parts, _ = self._get_padded_shape(shape_values) if shape_values else (shape_parts, shape_values)
+                        padded_shape_str = f"({', '.join(padded_parts)})"
+                        value_expr = f"tl.reshape({tensor_expr}, {padded_shape_str})"
                     elif tensor_name in self.tensor_shapes:
                         # If we still don't have source tensor info, use output tensor dimensions
                         shape_dims = []
@@ -2996,7 +3184,9 @@ def {kernel_name}(
                                 # Literal number
                                 shape_dims.append(str(dim_value))
                         shape_str = f"({', '.join(shape_dims)})"
-                        value_expr = f"tl.reshape({tensor_expr}, {shape_str})"
+                        padded_parts, _ = self._get_padded_shape(shape_dims) if shape_dims else (shape_dims, shape_dims)
+                        padded_shape_str = f"({', '.join(padded_parts)})"
+                        value_expr = f"tl.reshape({tensor_expr}, {padded_shape_str})"
                     else:
                         # Last resort: tensor already reshaped in squeeze operation
                         value_expr = f"{tensor_expr}"
@@ -3013,7 +3203,15 @@ def {kernel_name}(
             
             value_expr = self._generate_node_without_loads(val_node)
         else:
-            value_expr = self._generate_node(val_node)
+            value_code = self._generate_node(val_node)
+            if hasattr(val_node, 'temp_var'):
+                if value_code:
+                    code += value_code
+                    if not code.endswith('\n'):
+                        code += '\n'
+                value_expr = val_node.temp_var
+            else:
+                value_expr = value_code
         
         # If storing to an exp_tensor (fp32), remove unnecessary .to(tl.float16) conversions
         exp_tensors = getattr(self, 'exp_tensors', set())
@@ -3248,67 +3446,165 @@ def {kernel_name}(
             offset_str = " + ".join(offset_parts)
         
         return offset_str
-    
+
+    def _ensure_temp_var(self, child: ASTNode, context: str) -> tuple[str, str]:
+        child_code = ""
+        if not hasattr(child, 'temp_var'):
+            child_code = self._generate_node(child)
+            if child_code and not child_code.endswith('\n'):
+                child_code += '\n'
+        if not hasattr(child, 'temp_var'):
+            raise ValueError(f"Expected temp_var for {child.node_type} node in {context}")
+        return child_code, child.temp_var
+
+    def _get_operand_expr(self, child: ASTNode, context: str) -> tuple[str, str]:
+        if child.node_type in [NodeType.NUM, NodeType.VAR]:
+            return "", self._generate_node(child)
+        return self._ensure_temp_var(child, context)
+
     def _generate_binary_op(self, node: ASTNode, op: str) -> str:
         """Generate binary operation"""
-        
+
         if node.node_type == NodeType.SQR:
             # For SQR, generate the operand only once
             child = node.children[0]
-            if hasattr(child, 'temp_var'):
-                operand = child.temp_var
-            else:
-                operand = self._generate_node(child)
-            return f"({operand} * {operand}).to(tl.float16)"
-        
+            child_code, operand = self._get_operand_expr(child, "sqr")
+            node.tensor_shape = getattr(child, "tensor_shape", None)
+            indent_str = '    ' * self.indent_level
+            temp_var = f"temp_{self.temp_counter}"
+            self.temp_counter += 1
+            node.temp_var = temp_var
+            return f"{child_code}{indent_str}{temp_var} = ({operand} * {operand}).to(tl.float16)"
+
         # For other binary operations
         left_child = node.children[0]
         right_child = node.children[1]
-        
-        # Use temp_var if available (from load operations), otherwise generate normally
-        if hasattr(left_child, 'temp_var'):
-            left = left_child.temp_var
+
+        left_code, left = self._get_operand_expr(left_child, "binary op")
+        right_code, right = self._get_operand_expr(right_child, "binary op")
+        child_code = f"{left_code}{right_code}"
+
+        left_shape = getattr(left_child, "tensor_shape", None)
+        right_shape = getattr(right_child, "tensor_shape", None)
+        if left_shape == right_shape:
+            node.tensor_shape = left_shape
+        elif left_shape is None:
+            node.tensor_shape = right_shape
+        elif right_shape is None:
+            node.tensor_shape = left_shape
         else:
-            left = self._generate_node(left_child)
-            
-        if hasattr(right_child, 'temp_var'):
-            right = right_child.temp_var
-        else:
-            right = self._generate_node(right_child)
+            node.tensor_shape = None
             
         # Check if we're storing to an exp tensor (fp32)
         exp_tensors = getattr(self, 'exp_tensors', set())
         current_tensor = getattr(self, 'current_store_tensor', None)
-        
+
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+
         if current_tensor and current_tensor in exp_tensors:
             # Don't add .to(tl.float16) for fp32 tensors
-            return f"({left} {op} {right})"
+            return f"{child_code}{indent_str}{temp_var} = ({left} {op} {right})"
         else:
-            return f"({left} {op} {right}).to(tl.float16)"
+            return f"{child_code}{indent_str}{temp_var} = ({left} {op} {right}).to(tl.float16)"
+
+    def _generate_binary_func(self, node: ASTNode, func: str) -> str:
+        """Generate binary function call (e.g., tl.maximum, tl.minimum)."""
+        left_child = node.children[0]
+        right_child = node.children[1]
+
+        left_code, left = self._get_operand_expr(left_child, "binary func")
+        right_code, right = self._get_operand_expr(right_child, "binary func")
+        child_code = f"{left_code}{right_code}"
+
+        left_shape = getattr(left_child, "tensor_shape", None)
+        right_shape = getattr(right_child, "tensor_shape", None)
+        if left_shape == right_shape:
+            node.tensor_shape = left_shape
+        elif left_shape is None:
+            node.tensor_shape = right_shape
+        elif right_shape is None:
+            node.tensor_shape = left_shape
+        else:
+            node.tensor_shape = None
+
+        exp_tensors = getattr(self, 'exp_tensors', set())
+        current_tensor = getattr(self, 'current_store_tensor', None)
+
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+
+        if current_tensor and current_tensor in exp_tensors:
+            return f"{child_code}{indent_str}{temp_var} = {func}({left}, {right})"
+        else:
+            return f"{child_code}{indent_str}{temp_var} = {func}({left}, {right}).to(tl.float16)"
     
     def _generate_unary_op(self, node: ASTNode, op: str) -> str:
         """Generate unary operation"""
         child = node.children[0]
-        
-        # Use temp_var if available (from load operations), otherwise generate normally
-        if hasattr(child, 'temp_var'):
-            operand = child.temp_var
-        else:
-            operand = self._generate_node(child)
+
+        child_code, operand = self._get_operand_expr(child, "unary op")
+
+        node.tensor_shape = getattr(child, "tensor_shape", None)
+        node.block_shape = getattr(child, "block_shape", None)
         
         # Check if we're storing to an exp tensor (fp32)
         exp_tensors = getattr(self, 'exp_tensors', set())
         current_tensor = getattr(self, 'current_store_tensor', None)
-        
+
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+
         # For exp, sqrt, and sigmoid operations, convert input to float32
-        if op in ["tl.exp", "tl.sqrt", "tl.sigmoid"]:
-            return f"{op}({operand}.to(tl.float32)).to(tl.float16)"
+        if op in ["tl.exp", "tl.sqrt", "tl.sigmoid", "tl.math.erf"]:
+            return f"{child_code}{indent_str}{temp_var} = {op}({operand}.to(tl.float32)).to(tl.float16)"
         else:
             # Don't add .to(tl.float16) for fp32 tensors
             if current_tensor and current_tensor in exp_tensors:
-                return f"{op}({operand})"
+                return f"{child_code}{indent_str}{temp_var} = {op}({operand})"
             else:
-                return f"{op}({operand}).to(tl.float16)"
+                return f"{child_code}{indent_str}{temp_var} = {op}({operand}).to(tl.float16)"
+
+    def _map_cast_dtype(self, dtype: str) -> str:
+        """Map IR dtype string to a Triton dtype expression."""
+        if dtype.startswith("tl."):
+            return dtype
+
+        dtype_map = {
+            "float16": "tl.float16",
+            "float32": "tl.float32",
+            "float64": "tl.float64",
+            "int32": "tl.int32",
+            "int64": "tl.int64",
+            "bool": "tl.int1",
+        }
+        return dtype_map.get(dtype, dtype)
+
+    def _generate_cast(self, node: ASTNode) -> str:
+        """Generate cast operation"""
+        if len(node.children) != 2:
+            raise ValueError("cast requires exactly 2 arguments: dtype and value")
+
+        dtype_node = node.children[0]
+        value_node = node.children[1]
+
+        dtype = self._generate_node(dtype_node)
+        dtype = self._map_cast_dtype(dtype)
+
+        value_code, value_expr = self._get_operand_expr(value_node, "cast")
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+
+        node.tensor_shape = getattr(value_node, "tensor_shape", None)
+        return f"{value_code}{indent_str}{temp_var} = {value_expr}.to({dtype})"
     
     def _generate_matmul(self, node: ASTNode) -> str:
         """Generate matrix multiplication"""
@@ -3352,21 +3648,20 @@ def {kernel_name}(
             if left_axis == 1 and right_axis == 0:
                 # This is the pattern we see in the LoRA expressions
                 # Generate separate matmuls and add them
-                
+
                 # Get the concatenated tensors
                 left_tensors = []
+                child_code = ""
                 for child in left_children:
-                    if hasattr(child, 'temp_var'):
-                        left_tensors.append(child.temp_var)
-                    else:
-                        left_tensors.append(self._generate_node(child))
-                
+                    child_part, temp_var = self._ensure_temp_var(child, "matmul concat")
+                    child_code += child_part
+                    left_tensors.append(temp_var)
+
                 right_tensors = []
                 for child in right_children:
-                    if hasattr(child, 'temp_var'):
-                        right_tensors.append(child.temp_var)
-                    else:
-                        right_tensors.append(self._generate_node(child))
+                    child_part, temp_var = self._ensure_temp_var(child, "matmul concat")
+                    child_code += child_part
+                    right_tensors.append(temp_var)
                 
                 # For the pattern (concat X X 1) @ (concat T1 T2 0)
                 # Result = X @ T1 + X @ T2
@@ -3374,7 +3669,11 @@ def {kernel_name}(
                     # Assuming left_tensors[0] == left_tensors[1] (both are X)
                     matmul1 = f"tl.dot({left_tensors[0]}, {right_tensors[0]}).to(tl.float16)"
                     matmul2 = f"tl.dot({left_tensors[1]}, {right_tensors[1]}).to(tl.float16)"
-                    return f"({matmul1} + {matmul2})"
+                    indent_str = '    ' * self.indent_level
+                    temp_var = f"temp_{self.temp_counter}"
+                    self.temp_counter += 1
+                    node.temp_var = temp_var
+                    return f"{child_code}{indent_str}{temp_var} = ({matmul1} + {matmul2})"
                 else:
                     # Fallback for other concat patterns
                     raise NotImplementedError(f"Concat pattern with {len(left_tensors)} x {len(right_tensors)} tensors not supported")
@@ -3382,15 +3681,9 @@ def {kernel_name}(
                 raise NotImplementedError(f"Concat with axes {left_axis}, {right_axis} not supported in matmul")
         
         # Normal matmul without concat
-        if hasattr(left_child, 'temp_var'):
-            left = left_child.temp_var
-        else:
-            left = self._generate_node(left_child)
-            
-        if hasattr(right_child, 'temp_var'):
-            right = right_child.temp_var
-        else:
-            right = self._generate_node(right_child)
+        left_code, left = self._ensure_temp_var(left_child, "matmul")
+        right_code, right = self._ensure_temp_var(right_child, "matmul")
+        child_code = f"{left_code}{right_code}"
         
         # Check if we're storing to an exp tensor (fp32)
         exp_tensors = getattr(self, 'exp_tensors', set())
@@ -3414,24 +3707,55 @@ def {kernel_name}(
                 # Right is fp32, convert left to fp32
                 left = f"{left}.to(tl.float32)"
             # If both are fp32 or both are fp16, no conversion needed
-            return f"tl.dot({left}, {right})"
+            indent_str = '    ' * self.indent_level
+            temp_var = f"temp_{self.temp_counter}"
+            self.temp_counter += 1
+            node.temp_var = temp_var
+            return f"{child_code}{indent_str}{temp_var} = tl.dot({left}, {right})"
         else:
             # Both operands are fp16, storing to fp16 tensor
-            return f"tl.dot({left}, {right}).to(tl.float16)"
+            indent_str = '    ' * self.indent_level
+            temp_var = f"temp_{self.temp_counter}"
+            self.temp_counter += 1
+            node.temp_var = temp_var
+            return f"{child_code}{indent_str}{temp_var} = tl.dot({left}, {right}).to(tl.float16)"
     
     def _generate_reduce_sum(self, node: ASTNode) -> str:
         """Generate reduce sum operation"""
         # Check if the child is a load operation
         child = node.children[0]
         axis = self._generate_node(node.children[1])
-        
-        if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
-            # Use the temp variable if it was already generated
-            return f"tl.sum({child.temp_var}, axis={axis})"
-        else:
-            # Generate the child expression
-            tensor = self._generate_node(child)
-            return f"tl.sum({tensor}, axis={axis}, dtype=tl.float16)"
+
+        child_code, tensor = self._ensure_temp_var(child, "reduce sum")
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+        return f"{child_code}{indent_str}{temp_var} = tl.sum({tensor}, axis={axis}, dtype=tl.float16)"
+
+    def _generate_reduce_max(self, node: ASTNode) -> str:
+        """Generate reduce max operation"""
+        child = node.children[0]
+        axis = self._generate_node(node.children[1])
+
+        child_code, tensor = self._ensure_temp_var(child, "reduce max")
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+        return f"{child_code}{indent_str}{temp_var} = tl.max({tensor}, axis={axis})"
+
+    def _generate_reduce_min(self, node: ASTNode) -> str:
+        """Generate reduce min operation"""
+        child = node.children[0]
+        axis = self._generate_node(node.children[1])
+
+        child_code, tensor = self._ensure_temp_var(child, "reduce min")
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+        return f"{child_code}{indent_str}{temp_var} = tl.min({tensor}, axis={axis})"
     
     def _generate_broadcast(self, node: ASTNode) -> str:
         """Generate broadcast operation
@@ -3448,24 +3772,25 @@ def {kernel_name}(
         broadcast_dim = int(self._generate_node(node.children[1]))
         
         # Check if the child is a load operation with a temp_var
-        if hasattr(tensor_child, 'temp_var'):
-            tensor_expr = tensor_child.temp_var
-        else:
-            tensor_expr = self._generate_node(tensor_child)
-        
+        child_code, tensor_expr = self._ensure_temp_var(tensor_child, "broadcast")
+        indent_str = '    ' * self.indent_level
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+        node.temp_var = temp_var
+
         # In Triton, to broadcast:
         # - Along dimension 0: use [None, :] or [None, :, :] or [None, :, :, :]
         # - Along dimension 1: use [:, None] or [:, None, :] or [:, None, :, :]
         # - Along dimension 2: use [:, :, None] or [:, :, None, :]
         # - Along dimension 3: use [:, :, :, None]
         if broadcast_dim == 0:
-            return f"{tensor_expr}[None, :]"
+            return f"{child_code}{indent_str}{temp_var} = {tensor_expr}[None, :]"
         elif broadcast_dim == 1:
-            return f"{tensor_expr}[:, None]"
+            return f"{child_code}{indent_str}{temp_var} = {tensor_expr}[:, None]"
         elif broadcast_dim == 2:
-            return f"{tensor_expr}[:, :, None]"
+            return f"{child_code}{indent_str}{temp_var} = {tensor_expr}[:, :, None]"
         elif broadcast_dim == 3:
-            return f"{tensor_expr}[:, :, :, None]"
+            return f"{child_code}{indent_str}{temp_var} = {tensor_expr}[:, :, :, None]"
         else:
             # For higher dimensions, we'd need more complex indexing
             raise NotImplementedError(f"Broadcast along dimension {broadcast_dim} not yet implemented")
@@ -3594,6 +3919,38 @@ def {kernel_name}(
                 # elem represents a scalar index
                 shape.append(1)
                 
+        return tuple(shape) if shape else None
+
+    def _infer_block_shape_from_index(self, index_node: ASTNode, tensor_name: str) -> tuple:
+        """Infer padded block shape from index pattern for block-tensor ops."""
+        if index_node.node_type != NodeType.INDEX:
+            return None
+
+        shape = []
+        for i, child in enumerate(index_node.children):
+            if child.node_type == NodeType.FULLTILE:
+                dim_value = None
+                if tensor_name in self.tensor_shapes and i < len(self.tensor_shapes[tensor_name]):
+                    dim_value = self.tensor_shapes[tensor_name][i]
+                else:
+                    dim_value = f"{tensor_name}_dim{i}"
+                padded_dim, _ = self._get_padded_block_size(dim_value)
+                shape.append(padded_dim)
+            elif child.node_type == NodeType.TILE:
+                if child.children:
+                    loop_var = child.children[0].value
+                    block_param = f"BLOCK_{loop_var.upper()}"
+                    padded_dim, _ = self._get_padded_block_size(block_param)
+                    shape.append(padded_dim)
+                else:
+                    shape.append(1)
+            elif child.node_type == NodeType.ELEM:
+                shape.append(1)
+            elif child.node_type == NodeType.CONST_TILE:
+                if len(child.children) >= 2:
+                    size = self._generate_node(child.children[1])
+                    padded_dim, _ = self._get_padded_block_size(size)
+                    shape.append(padded_dim)
         return tuple(shape) if shape else None
     
     def _collect_all_loops(self, node: ASTNode):
@@ -3796,7 +4153,7 @@ def {kernel_name}(
     
     def _contains_loads(self, node: ASTNode) -> bool:
         """Check if node contains load operations or operations that need temp vars"""
-        if node.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        if node.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             return True
         for child in node.children:
             if isinstance(child, ASTNode) and self._contains_loads(child):
@@ -3804,8 +4161,8 @@ def {kernel_name}(
         return False
     
     def _contains_reduce_sum(self, node: ASTNode) -> bool:
-        """Check if node contains reduce sum operations"""
-        if node.node_type == NodeType.RSUM:
+        """Check if node contains reduce operations"""
+        if node.node_type in [NodeType.RSUM, NodeType.RMAX, NodeType.RMIN]:
             return True
         for child in node.children:
             if isinstance(child, ASTNode) and self._contains_reduce_sum(child):
@@ -3822,7 +4179,7 @@ def {kernel_name}(
                 code += load_code
                 if not load_code.endswith('\n'):
                     code += '\n'
-        elif node.node_type in [NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # Generate these operations as well since they produce temp vars
             op_code = self._generate_node(node)
             if op_code:  # Only add if there's actual code
@@ -3840,11 +4197,40 @@ def {kernel_name}(
         if node.node_type == NodeType.LOAD:
             # Return the temp variable assigned during load generation
             return node.temp_var if hasattr(node, 'temp_var') else self._generate_node(node)
-        elif node.node_type in [NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
+        elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE]:
             # Return the temp variable assigned during operation generation
             return node.temp_var if hasattr(node, 'temp_var') else self._generate_node(node)
-        elif node.node_type in [NodeType.ADD, NodeType.SUB, NodeType.MUL, NodeType.DIV]:
-            return self._generate_binary_op(node, {NodeType.ADD: '+', NodeType.SUB: '-', NodeType.MUL: '*', NodeType.DIV: '/'}[node.node_type])
+        elif node.node_type in [NodeType.ADD, NodeType.SUB, NodeType.MUL, NodeType.DIV, NodeType.LE]:
+            op_map = {
+                NodeType.ADD: '+',
+                NodeType.SUB: '-',
+                NodeType.MUL: '*',
+                NodeType.DIV: '/',
+                NodeType.LE: '<=',
+            }
+            left_expr = self._generate_node_without_loads(node.children[0])
+            right_expr = self._generate_node_without_loads(node.children[1])
+            exp_tensors = getattr(self, 'exp_tensors', set())
+            current_tensor = getattr(self, 'current_store_tensor', None)
+            if current_tensor and current_tensor in exp_tensors:
+                return f"({left_expr} {op_map[node.node_type]} {right_expr})"
+            return f"({left_expr} {op_map[node.node_type]} {right_expr}).to(tl.float16)"
+        elif node.node_type == NodeType.MAX:
+            left_expr = self._generate_node_without_loads(node.children[0])
+            right_expr = self._generate_node_without_loads(node.children[1])
+            exp_tensors = getattr(self, 'exp_tensors', set())
+            current_tensor = getattr(self, 'current_store_tensor', None)
+            if current_tensor and current_tensor in exp_tensors:
+                return f"tl.maximum({left_expr}, {right_expr})"
+            return f"tl.maximum({left_expr}, {right_expr}).to(tl.float16)"
+        elif node.node_type == NodeType.MIN:
+            left_expr = self._generate_node_without_loads(node.children[0])
+            right_expr = self._generate_node_without_loads(node.children[1])
+            exp_tensors = getattr(self, 'exp_tensors', set())
+            current_tensor = getattr(self, 'current_store_tensor', None)
+            if current_tensor and current_tensor in exp_tensors:
+                return f"tl.minimum({left_expr}, {right_expr})"
+            return f"tl.minimum({left_expr}, {right_expr}).to(tl.float16)"
         elif node.node_type == NodeType.MATMUL:
             # Handle matmul specially - check if it has a temp_var from nested processing
             if hasattr(node, 'temp_var'):
@@ -3865,20 +4251,85 @@ def {kernel_name}(
             else:
                 child_expr = self._generate_node_without_loads(child)
                 return f"tl.sum({child_expr}, axis={axis}, dtype=tl.float16)"
+        elif node.node_type == NodeType.RMAX:
+            child = node.children[0]
+            axis = self._generate_node(node.children[1])
+            if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
+                return f"tl.max({child.temp_var}, axis={axis})"
+            else:
+                child_expr = self._generate_node_without_loads(child)
+                return f"tl.max({child_expr}, axis={axis})"
+        elif node.node_type == NodeType.RMIN:
+            child = node.children[0]
+            axis = self._generate_node(node.children[1])
+            if child.node_type == NodeType.LOAD and hasattr(child, 'temp_var'):
+                return f"tl.min({child.temp_var}, axis={axis})"
+            else:
+                child_expr = self._generate_node_without_loads(child)
+                return f"tl.min({child_expr}, axis={axis})"
         elif node.node_type == NodeType.BCAST:
             # Handle broadcast specially
-            return self._generate_broadcast(node)
+            tensor_expr = self._generate_node_without_loads(node.children[0])
+            broadcast_dim = int(self._generate_node(node.children[1]))
+            if broadcast_dim == 0:
+                return f"{tensor_expr}[None, :]"
+            elif broadcast_dim == 1:
+                return f"{tensor_expr}[:, None]"
+            elif broadcast_dim == 2:
+                return f"{tensor_expr}[:, :, None]"
+            elif broadcast_dim == 3:
+                return f"{tensor_expr}[:, :, :, None]"
+            raise NotImplementedError(f"Broadcast along dimension {broadcast_dim} not yet implemented")
         elif node.node_type == NodeType.EXP:
-            return self._generate_unary_op(node, "tl.exp")
+            operand = self._generate_node_without_loads(node.children[0])
+            return f"tl.exp({operand}.to(tl.float32)).to(tl.float16)"
         elif node.node_type == NodeType.SQR:
-            return self._generate_binary_op(node, "*")
+            operand = self._generate_node_without_loads(node.children[0])
+            return f"({operand} * {operand}).to(tl.float16)"
         elif node.node_type == NodeType.SQRT:
-            return self._generate_unary_op(node, "tl.sqrt")
+            operand = self._generate_node_without_loads(node.children[0])
+            return f"tl.sqrt({operand}.to(tl.float32)).to(tl.float16)"
         elif node.node_type == NodeType.SIGMOID:
-            return self._generate_unary_op(node, "tl.sigmoid")
+            operand = self._generate_node_without_loads(node.children[0])
+            return f"tl.sigmoid({operand}.to(tl.float32)).to(tl.float16)"
+        elif node.node_type == NodeType.ERF:
+            operand = self._generate_node_without_loads(node.children[0])
+            return f"tl.math.erf({operand}.to(tl.float32)).to(tl.float16)"
+        elif node.node_type == NodeType.CAST:
+            dtype_node = node.children[0]
+            value_node = node.children[1]
+            dtype = self._generate_node(dtype_node)
+            dtype = self._map_cast_dtype(dtype)
+            value_expr = self._generate_node_without_loads(value_node)
+            return f"{value_expr}.to({dtype})"
+        elif node.node_type == NodeType.ABS:
+            operand = self._generate_node_without_loads(node.children[0])
+            exp_tensors = getattr(self, 'exp_tensors', set())
+            current_tensor = getattr(self, 'current_store_tensor', None)
+            if current_tensor and current_tensor in exp_tensors:
+                return f"tl.abs({operand})"
+            return f"tl.abs({operand}).to(tl.float16)"
         else:
             return self._generate_node(node)
     
+    def _build_transpose_permutation(self, child: ASTNode, node: ASTNode) -> Tuple[Tuple[int, ...], str]:
+        """Build permutation tuple and string for transpose."""
+        if len(node.children) != 1:
+            raise ValueError("transpose requires exactly 1 argument: tensor")
+
+        source_name = self._infer_tensor_name(child)
+        if hasattr(child, "tensor_shape") and child.tensor_shape:
+            num_dims = len(child.tensor_shape)
+        elif source_name in self.tensor_shapes:
+            num_dims = len(self.tensor_shapes[source_name])
+        else:
+            num_dims = 2
+
+        perm_dims = list(range(num_dims))
+        if num_dims >= 2:
+            perm_dims[-2], perm_dims[-1] = perm_dims[-1], perm_dims[-2]
+        return tuple(perm_dims), f"({', '.join(str(d) for d in perm_dims)})"
+
     def _generate_permute3(self, node: ASTNode) -> str:
         """Generate permute3 operation for 3D or 4D tensor
         
@@ -3899,7 +4350,7 @@ def {kernel_name}(
         
         # If child doesn't have temp_var yet, generate it
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3]:
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
                 child_code = self._generate_node(child)
                 if child_code and not child_code.endswith('\n'):
                     child_code += '\n'
@@ -3958,7 +4409,70 @@ def {kernel_name}(
         
         # Store the permutation dimensions for later use (e.g., in squeeze)
         node.permute_dims = perm_dims
-        
+        child_shape = getattr(child, "tensor_shape", None)
+        if child_shape and len(child_shape) == len(perm_dims):
+            node.tensor_shape = tuple(child_shape[i] for i in perm_dims)
+        child_block = getattr(child, "block_shape", None)
+        if child_block and len(child_block) == len(perm_dims):
+            node.block_shape = tuple(child_block[i] for i in perm_dims)
+
+        return code
+
+    def _generate_transpose(self, node: ASTNode) -> str:
+        """Generate transpose operation for tensors.
+
+        transpose in the IR takes:
+        1. The tensor to transpose
+        2-3. Optional dimension indices to swap
+
+        Examples:
+        - (transpose tensor) swaps the last two dimensions
+        - (transpose tensor 0 1) swaps dimensions 0 and 1
+        """
+        if len(node.children) != 1:
+            raise ValueError("transpose requires exactly 1 argument: tensor")
+
+        child = node.children[0]
+        child_code = ""
+
+        if not hasattr(child, 'temp_var'):
+            # if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
+            child_code = self._generate_node(child)
+            if child_code and not child_code.endswith('\n'):
+                child_code += '\n'
+
+        if hasattr(child, 'temp_var'):
+            tensor_expr = child.temp_var
+        else:
+            raise ValueError(f"Expected temp_var for {child.node_type} node in transpose")
+
+        perm_dims, perm_str = self._build_transpose_permutation(child, node)
+
+        # if hasattr(self, '_generating_inline') and self._generating_inline:
+        #     if len(perm_dims) == 2 and perm_dims == (1, 0):
+        #         return f"tl.trans({tensor_expr})"
+        #     return f"tl.permute({tensor_expr}, {perm_str})"
+
+        temp_var = f"temp_{self.temp_counter}"
+        self.temp_counter += 1
+
+        indent = '    ' * self.indent_level
+        code = child_code
+        if len(perm_dims) == 2 and perm_dims == (1, 0):
+            code += f"{indent}{temp_var} = tl.trans({tensor_expr})\n"
+        else:
+            raise ValueError(f"Expected 2 dimenssion in transpose")
+            # code += f"{indent}{temp_var} = tl.permute({tensor_expr}, {perm_str})\n"
+
+        node.temp_var = temp_var
+        node.permute_dims = perm_dims
+        child_shape = getattr(child, "tensor_shape", None)
+        if child_shape and len(child_shape) == len(perm_dims):
+            node.tensor_shape = tuple(child_shape[i] for i in perm_dims)
+        child_block = getattr(child, "block_shape", None)
+        if child_block and len(child_block) == len(perm_dims):
+            node.block_shape = tuple(child_block[i] for i in perm_dims)
+
         return code
     
     def _generate_squeeze(self, node: ASTNode) -> str:
@@ -3978,10 +4492,10 @@ def {kernel_name}(
         child_code = ""
         
         # If child needs generation, do it first
-        if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.SQUEEZE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
-            child_code = self._generate_node(child)
-            if not child_code.endswith('\n'):
-                child_code += '\n'
+        # if child.node_type in [NodeType.LOAD, NodeType.PERMUTE3, NodeType.TRANSPOSE, NodeType.SQUEEZE, NodeType.UNSQUEEZE] and not hasattr(child, 'temp_var'):
+        child_code = self._generate_node(child)
+        if not child_code.endswith('\n'):
+            child_code += '\n'
         
         # Get the tensor expression
         if hasattr(child, 'temp_var'):
@@ -3995,54 +4509,128 @@ def {kernel_name}(
         
         # Get the dimension to squeeze
         dim = self._generate_node(node.children[1])
+        dim_value = None
+        try:
+            dim_value = int(dim)
+        except (TypeError, ValueError):
+            dim_value = None
+
+        self._debug_log(
+            f"squeeze child={child.node_type} dim={dim} dim_value={dim_value} "
+            f"child.block_shape={getattr(child, 'block_shape', None)} "
+            f"child.tensor_shape={getattr(child, 'tensor_shape', None)}"
+        )
         
         # Generate a temporary variable for the result
         temp_var = f"temp_{self.temp_counter}"
         self.temp_counter += 1
-        
+
         # Try to infer the source tensor name for dimension information
         source_tensor_name = self._infer_tensor_name(child)
-        
+
         indent = '    ' * self.indent_level
         code = child_code
-        
-        if source_tensor_name:
+
+        if hasattr(child, "block_shape") and child.block_shape and dim_value is not None:
+            block_shape = list(child.block_shape)
+            dim_index = dim_value
+            if dim_index < 0:
+                dim_index += len(block_shape)
+            if 0 <= dim_index < len(block_shape):
+                del block_shape[dim_index]
+                shape_parts = [str(dim) for dim in block_shape]
+                shape_tuple = f"({', '.join(shape_parts)})"
+                code += f"{indent}{temp_var} = tl.reshape({tensor_expr}, {shape_tuple})\n"
+                node.block_shape = tuple(block_shape)
+                if hasattr(child, "tensor_shape") and child.tensor_shape:
+                    tensor_shape = list(child.tensor_shape)
+                    dim_idx = dim_value
+                    if dim_idx < 0:
+                        dim_idx += len(tensor_shape)
+                    if 0 <= dim_idx < len(tensor_shape):
+                        del tensor_shape[dim_idx]
+                node.tensor_shape = tuple(tensor_shape)
+                node.temp_var = temp_var
+                node.squeeze_dim = int(dim)
+                self._debug_log(
+                    f"squeeze used block_shape -> {node.block_shape} tensor_shape={getattr(node, 'tensor_shape', None)}"
+                )
+                return code
+
+        if hasattr(child, "tensor_shape") and child.tensor_shape and dim_value is not None:
+            result = self._apply_squeeze_from_shape(
+                child.tensor_shape,
+                dim_value,
+                tensor_expr,
+                temp_var,
+                indent,
+                node,
+            )
+            if result is not None:
+                code += result
+                node.temp_var = temp_var
+                node.squeeze_dim = int(dim)
+                self._debug_log(
+                    f"squeeze used tensor_shape -> {getattr(node, 'tensor_shape', None)} block_shape={getattr(node, 'block_shape', None)}"
+                )
+                return code
+        if source_tensor_name and source_tensor_name in self.tensor_shapes:
             # Use tensor dimension information to construct new shape for reshape
             # Build new shape by excluding the squeezed dimension
             code += f"{indent}# Squeeze dimension {dim} from {source_tensor_name}\n"
             
             # Get the number of dimensions from tensor_shapes if available
-            if source_tensor_name in self.tensor_shapes:
-                num_dims = len(self.tensor_shapes[source_tensor_name])
-            else:
-                # Default to 3D for typical attention tensors
-                num_dims = 3
+            num_dims = len(self.tensor_shapes[source_tensor_name])
             
             # Check if the child was a permute operation
-            if child.node_type == NodeType.PERMUTE3 and hasattr(child, 'permute_dims'):
+            if child.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE] and hasattr(child, 'permute_dims'):
                 # Get the permuted dimension order
                 perm_dims = child.permute_dims  # e.g., (1, 0, 2)
                 shape_parts = []
+                shape_values = []
                 
                 # Map the original dimensions through the permutation
                 for i in range(num_dims):
                     if i != int(dim):  # Skip the dimension to be squeezed
                         # Find which original dimension this corresponds to
                         orig_dim = perm_dims[i]
-                        shape_parts.append(f"{source_tensor_name}_dim{orig_dim}")
+                        dim_value = self.tensor_shapes[source_tensor_name][orig_dim]
+                        if isinstance(dim_value, str):
+                            shape_parts.append(dim_value)
+                        else:
+                            shape_parts.append(str(dim_value))
+                        if orig_dim < len(self.tensor_shapes[source_tensor_name]):
+                            shape_values.append(self.tensor_shapes[source_tensor_name][orig_dim])
             else:
                 # No permutation, use original dimension order
                 shape_parts = []
+                shape_values = []
                 for i in range(num_dims):
                     if i != int(dim):  # Skip the dimension to be squeezed
-                        shape_parts.append(f"{source_tensor_name}_dim{i}")
+                        dim_value = self.tensor_shapes[source_tensor_name][i]
+                        if isinstance(dim_value, str):
+                            shape_parts.append(dim_value)
+                        else:
+                            shape_parts.append(str(dim_value))
+                        shape_values.append(self.tensor_shapes[source_tensor_name][i])
             
             # Pass shape directly as tuple to tl.reshape
             shape_tuple = f"({', '.join(shape_parts)})"
-            code += f"{indent}{temp_var} = tl.reshape({tensor_expr}, {shape_tuple})\n"
+            padded_parts, padded_values = self._get_padded_shape(shape_values) if shape_values else (shape_parts, shape_values)
+            padded_shape_tuple = f"({', '.join(padded_parts)})"
+            code += f"{indent}{temp_var} = tl.reshape({tensor_expr}, {padded_shape_tuple})\n"
+            if shape_values:
+                node.tensor_shape = tuple(shape_values)
+                node.block_shape = tuple(padded_values)
+            self._debug_log(
+                f"squeeze used tensor_shapes[{source_tensor_name}] -> "
+                f"tensor_shape={getattr(node, 'tensor_shape', None)} "
+                f"block_shape={getattr(node, 'block_shape', None)}"
+            )
         else:
             # Fallback: simple assignment with comment
             code += f"{indent}{temp_var} = {tensor_expr}  # squeeze dim {dim} (fallback)\n"
+            self._debug_log("squeeze fallback: no tensor_shape/block_shape available")
         
         # Store temp var in node for parent operations
         node.temp_var = temp_var
@@ -4050,6 +4638,38 @@ def {kernel_name}(
         # Store squeeze dimension for parent operations
         node.squeeze_dim = int(dim)
         
+        return code
+
+    def _apply_squeeze_from_shape(
+        self,
+        child_shape,
+        dim_value: int,
+        tensor_expr: str,
+        temp_var: str,
+        indent: str,
+        node: ASTNode,
+    ) -> str | None:
+        if dim_value < 0:
+            dim_value += len(child_shape)
+        if not (0 <= dim_value < len(child_shape)):
+            return None
+        shape_parts = []
+        shape_values = []
+        for i, dim_entry in enumerate(child_shape):
+            if i == dim_value:
+                continue
+            if isinstance(dim_entry, str):
+                shape_parts.append(dim_entry)
+            else:
+                shape_parts.append(str(dim_entry))
+            shape_values.append(dim_entry)
+        shape_tuple = f"({', '.join(shape_parts)})"
+        padded_parts, padded_values = self._get_padded_shape(shape_values) if shape_values else (shape_parts, shape_values)
+        padded_shape_tuple = f"({', '.join(padded_parts)})"
+        code = f"{indent}{temp_var} = tl.reshape({tensor_expr}, {padded_shape_tuple})\n"
+        if shape_values:
+            node.tensor_shape = tuple(shape_values)
+            node.block_shape = tuple(padded_values)
         return code
     
     def _infer_tensor_name(self, node: ASTNode) -> str:
@@ -4062,7 +4682,7 @@ def {kernel_name}(
             elif tensor_node.node_type == NodeType.TENSOR:
                 # Handle (tensor name) case
                 return tensor_node.children[0].value
-        elif node.node_type == NodeType.PERMUTE3:
+        elif node.node_type in [NodeType.PERMUTE3, NodeType.TRANSPOSE]:
             # Permute operation - infer from its child
             return self._infer_tensor_name(node.children[0])
         elif node.node_type == NodeType.UNSQUEEZE:
@@ -4092,17 +4712,30 @@ def {kernel_name}(
         
         # If child doesn't have temp_var yet, generate it
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3]:
+            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
                 child_code = self._generate_node(child)
                 if child_code and not child_code.endswith('\n'):
                     child_code += '\n'
-        
+    
         # Get the tensor expression
         if hasattr(child, 'temp_var'):
             tensor_expr = child.temp_var
+        else:
+            raise ValueError(f"Expected temp_var for {child.node_type} node in unsqueeze")
         
         # Get the dimension to unsqueeze
         dim = self._generate_node(node.children[1])
+        dim_value = None
+        try:
+            dim_value = int(dim)
+        except (TypeError, ValueError):
+            dim_value = None
+
+        self._debug_log(
+            f"unsqueeze child={child.node_type} dim={dim} dim_value={dim_value} "
+            f"child.block_shape={getattr(child, 'block_shape', None)} "
+            f"child.tensor_shape={getattr(child, 'tensor_shape', None)}"
+        )
         
         # Generate a temporary variable for the result
         temp_var = f"temp_{self.temp_counter}"
@@ -4112,11 +4745,44 @@ def {kernel_name}(
         indent = '    ' * self.indent_level
         code = child_code
         code += f"{indent}{temp_var} = tl.expand_dims({tensor_expr}, {dim})\n"
-        
+
         # Store temp var in node for parent operations
         node.temp_var = temp_var
+        child_shape = getattr(child, "tensor_shape", None)
+        dim_value = None
+        try:
+            dim_value = int(dim)
+        except (TypeError, ValueError):
+            dim_value = None
+        if child_shape and dim_value is not None:
+            if dim_value < 0:
+                dim_value += len(child_shape) + 1
+            if 0 <= dim_value <= len(child_shape):
+                new_shape = list(child_shape)
+                new_shape.insert(dim_value, 1)
+                node.tensor_shape = tuple(new_shape)
         
         # Store unsqueeze dimension for parent operations
-        node.unsqueeze_dim = int(dim)
-        
+        if dim_value is not None:
+            node.unsqueeze_dim = dim_value
+        if hasattr(child, "tensor_shape") and child.tensor_shape and dim_value is not None:
+            child_shape = list(child.tensor_shape)
+            if dim_value < 0:
+                dim_value += len(child_shape) + 1
+            if 0 <= dim_value <= len(child_shape):
+                child_shape.insert(dim_value, 1)
+                node.tensor_shape = tuple(child_shape)
+        if hasattr(child, "block_shape") and child.block_shape and dim_value is not None:
+            block_shape = list(child.block_shape)
+            dim_index = dim_value
+            if dim_index < 0:
+                dim_index += len(block_shape) + 1
+            if 0 <= dim_index <= len(block_shape):
+                block_shape.insert(dim_index, 1)
+                node.block_shape = tuple(block_shape)
+        self._debug_log(
+            f"unsqueeze result block_shape={getattr(node, 'block_shape', None)} "
+            f"tensor_shape={getattr(node, 'tensor_shape', None)}"
+        )
+
         return code

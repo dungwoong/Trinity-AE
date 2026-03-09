@@ -1,0 +1,427 @@
+{
+  "x": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "input"
+  },
+  "y": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "input"
+  },
+  "w": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "input"
+  },
+  "t3": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "u3": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "v3": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "a4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "b4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "c4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "d4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "e4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "f4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "g4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "h4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "i4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "j4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "k4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "l4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "m4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "n4": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "input"
+  },
+  "out0": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "output"
+  },
+  "out1": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "output"
+  },
+  "out2": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "output"
+  },
+  "out3": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "output"
+  },
+  "out4": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "output"
+  },
+  "out5": {
+    "shape": [
+      4,
+      4
+    ],
+    "type": "output"
+  },
+  "out6": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out7": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out10": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out11": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out12": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out8": {
+    "shape": [
+      2,
+      3
+    ],
+    "type": "output"
+  },
+  "out9": {
+    "shape": [
+      2,
+      4
+    ],
+    "type": "output"
+  },
+  "out13": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out14": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out15": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out16": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out17": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out18": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out19": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out20": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out21": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out22": {
+    "shape": [
+      2,
+      2,
+      3
+    ],
+    "type": "output"
+  },
+  "out23": {
+    "shape": [
+      2,
+      2,
+      4
+    ],
+    "type": "output"
+  },
+  "out24": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out25": {
+    "shape": [
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out26": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out27": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out28": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out29": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  },
+  "out30": {
+    "shape": [
+      2,
+      2,
+      3,
+      4
+    ],
+    "type": "output"
+  }
+}

@@ -950,15 +950,32 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         TileLang::Div(children) => {
             TileLang::Div([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
+        TileLang::Le(children) => {
+            TileLang::Le([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::Max(children) => {
+            TileLang::Max([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::Min(children) => {
+            TileLang::Min([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
         TileLang::Exp(child) => TileLang::Exp(old_to_new_id[child]),
         TileLang::Sqr(child) => TileLang::Sqr(old_to_new_id[child]),
         TileLang::Sqrt(child) => TileLang::Sqrt(old_to_new_id[child]),
         TileLang::Sigmoid(child) => TileLang::Sigmoid(old_to_new_id[child]),
+        TileLang::Erf(child) => TileLang::Erf(old_to_new_id[child]),
+        TileLang::Abs(child) => TileLang::Abs(old_to_new_id[child]),
         TileLang::Matmul(children) => {
             TileLang::Matmul([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
         TileLang::ReduceSum(children) => {
             TileLang::ReduceSum([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::ReduceMin(children) => {
+            TileLang::ReduceMin([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
+        }
+        TileLang::ReduceMax(children) => {
+            TileLang::ReduceMax([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
         TileLang::Concat(children) => TileLang::Concat([
             old_to_new_id[&children[0]],
@@ -968,11 +985,23 @@ fn update_node_children(node: &TileLang, old_to_new_id: &HashMap<Id, Id>) -> Til
         TileLang::Broadcast(children) => {
             TileLang::Broadcast([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])
         }
+        TileLang::Transpose(child) => {
+            TileLang::Transpose(
+                old_to_new_id[child]
+            )      
+        },
         TileLang::Permute3(children) => TileLang::Permute3([
             old_to_new_id[&children[0]],
             old_to_new_id[&children[1]],
             old_to_new_id[&children[2]],
             old_to_new_id[&children[3]],
+        ]),
+        TileLang::Permute4(children) => TileLang::Permute4([
+            old_to_new_id[&children[0]],
+            old_to_new_id[&children[1]],
+            old_to_new_id[&children[2]],
+            old_to_new_id[&children[3]],
+            old_to_new_id[&children[4]],
         ]),
         TileLang::Squeeze(children) => {
             TileLang::Squeeze([old_to_new_id[&children[0]], old_to_new_id[&children[1]]])

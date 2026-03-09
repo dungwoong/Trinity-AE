@@ -81,7 +81,10 @@ impl FineGrainedCostModel {
             TileLang::Add([left, right])
             | TileLang::Sub([left, right])
             | TileLang::Mul([left, right])
-            | TileLang::Div([left, right]) => {
+            | TileLang::Div([left, right])
+            | TileLang::Le([left, right])
+            | TileLang::Max([left, right])
+            | TileLang::Min([left, right]) => {
                 // Scale down by 1000 to prevent overflow
                 let cost = self.get_elementwise_flops(egraph, *left, *right);
                 // if cost != 0 {
@@ -93,7 +96,10 @@ impl FineGrainedCostModel {
             TileLang::Sqr(input)
             | TileLang::Sqrt(input)
             | TileLang::Exp(input)
-            | TileLang::Sigmoid(input) => {
+            | TileLang::Sigmoid(input)
+            | TileLang::Erf(input)
+            | TileLang::Abs(input)
+            | TileLang::Cast([_, input]) => {
                 // Scale down by 1000 to prevent overflow
                 let cost = self.get_unary_flops(egraph, *input, 10);
                 // if cost != 0 {
@@ -102,7 +108,9 @@ impl FineGrainedCostModel {
                 cost
             }
 
-            TileLang::ReduceSum([input, _axis]) => {
+            TileLang::ReduceSum([input, _axis])
+            | TileLang::ReduceMin([input, _axis])
+            | TileLang::ReduceMax([input, _axis]) => {
                 // Scale down by 1000 to prevent overflow
                 self.get_reduce_flops(egraph, *input)
             }

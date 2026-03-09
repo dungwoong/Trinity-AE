@@ -104,15 +104,25 @@ fn format_node_with_ids(_egraph: &EGraph<TileLang, LoopAnalysis>, node: &TileLan
             Sub(_) => "-",
             Mul(_) => "*",
             Div(_) => "/",
+            Le(_) => "<=",
+            Max(_) => "max",
+            Min(_) => "min",
             Exp(_) => "exp",
             Matmul(_) => "@",
             ReduceSum(_) => "rsum",
+            ReduceMin(_) => "rmin",
+            ReduceMax(_) => "rmax",
             Sqr(_) => "sqr",
             Sqrt(_) => "sqrt",
             Sigmoid(_) => "sigmoid",
+            Erf(_) => "erf",
+            Abs(_) => "abs",
+            Cast(_) => "cast",
             Concat(_) => "concat",
             Broadcast(_) => "bcast",
+            Transpose(_) => "transpose",
             Permute3(_) => "permute3",
+            Permute4(_) => "permute4",
             Squeeze(_) => "squeeze",
             Unsqueeze(_) => "unsqueeze",
             Dummy => "dummy",
@@ -346,15 +356,35 @@ fn parse_node(
             "const" if child_ids.len() >= 1 => Const(child_ids[0]),
             "-" if child_ids.len() >= 2 => Sub([child_ids[0], child_ids[1]]),
             "/" if child_ids.len() >= 2 => Div([child_ids[0], child_ids[1]]),
+            "<=" if child_ids.len() >= 2 => Le([child_ids[0], child_ids[1]]),
+            "max" if child_ids.len() >= 2 => Max([child_ids[0], child_ids[1]]),
+            "min" if child_ids.len() >= 2 => Min([child_ids[0], child_ids[1]]),
             "exp" if child_ids.len() >= 1 => Exp(child_ids[0]),
             "rsum" if child_ids.len() >= 2 => ReduceSum([child_ids[0], child_ids[1]]),
+            "rmin" if child_ids.len() >= 2 => ReduceMin([child_ids[0], child_ids[1]]),
+            "rmax" if child_ids.len() >= 2 => ReduceMax([child_ids[0], child_ids[1]]),
             "sqr" if child_ids.len() >= 1 => Sqr(child_ids[0]),
             "sqrt" if child_ids.len() >= 1 => Sqrt(child_ids[0]),
             "sigmoid" if child_ids.len() >= 1 => Sigmoid(child_ids[0]),
+            "erf" if child_ids.len() >= 1 => Erf(child_ids[0]),
+            "abs" if child_ids.len() >= 1 => Abs(child_ids[0]),
+            "cast" if child_ids.len() >= 2 => Cast([child_ids[0], child_ids[1]]),
             "concat" if child_ids.len() >= 3 => Concat([child_ids[0], child_ids[1], child_ids[2]]),
             "bcast" if child_ids.len() >= 2 => Broadcast([child_ids[0], child_ids[1]]),
+            "transpose" if child_ids.len() >= 1 => {
+                Transpose(child_ids[0])
+            }
             "permute3" if child_ids.len() >= 4 => {
                 Permute3([child_ids[0], child_ids[1], child_ids[2], child_ids[3]])
+            }
+            "permute4" if child_ids.len() >= 5 => {
+                Permute4([
+                    child_ids[0],
+                    child_ids[1],
+                    child_ids[2],
+                    child_ids[3],
+                    child_ids[4],
+                ])
             }
             "squeeze" if child_ids.len() >= 2 => Squeeze([child_ids[0], child_ids[1]]),
             "unsqueeze" if child_ids.len() >= 2 => Unsqueeze([child_ids[0], child_ids[1]]),

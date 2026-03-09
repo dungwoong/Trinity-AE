@@ -726,6 +726,21 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),
+        TileLang::Le(_) => format!(
+            "(<= {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::Max(_) => format!(
+            "(max {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::Min(_) => format!(
+            "(min {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
 
         TileLang::Exp(_) => format!("(exp {})", children.get(0).unwrap_or(&"?".to_string())),
 
@@ -736,6 +751,8 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
         TileLang::Sigmoid(_) => {
             format!("(sigmoid {})", children.get(0).unwrap_or(&"?".to_string()))
         }
+        TileLang::Erf(_) => format!("(erf {})", children.get(0).unwrap_or(&"?".to_string())),
+        TileLang::Abs(_) => format!("(abs {})", children.get(0).unwrap_or(&"?".to_string())),
 
         TileLang::Matmul(_) => format!(
             "(@ {} {})",
@@ -745,6 +762,16 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
 
         TileLang::ReduceSum(_) => format!(
             "(rsum {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::ReduceMin(_) => format!(
+            "(rmin {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string())
+        ),
+        TileLang::ReduceMax(_) => format!(
+            "(rmax {} {})",
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())
         ),
@@ -763,12 +790,24 @@ pub fn format_enode_with_children(enode: &TileLang, children: &[String]) -> Stri
             children.get(1).unwrap_or(&"?".to_string())
         ),
 
+        TileLang::Transpose(_) => {
+            format!("(transpose {})", children.get(0).unwrap_or(&"?".to_string()))
+        },
+
         TileLang::Permute3(_) => format!(
             "(permute3 {} {} {} {})",
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string()),
             children.get(2).unwrap_or(&"?".to_string()),
             children.get(3).unwrap_or(&"?".to_string())
+        ),
+        TileLang::Permute4(_) => format!(
+            "(permute4 {} {} {} {} {})",
+            children.get(0).unwrap_or(&"?".to_string()),
+            children.get(1).unwrap_or(&"?".to_string()),
+            children.get(2).unwrap_or(&"?".to_string()),
+            children.get(3).unwrap_or(&"?".to_string()),
+            children.get(4).unwrap_or(&"?".to_string())
         ),
 
         TileLang::Squeeze(_) => format!(

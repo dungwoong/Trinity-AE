@@ -33,17 +33,27 @@ define_language! {
         "-" = Sub([Id; 2]), // a - b
         "*" = Mul([Id; 2]), // a * b (elementwise)
         "/" = Div([Id; 2]), // a / b
+        "<=" = Le([Id; 2]), // a <= b
+        "max" = Max([Id; 2]), // max(a, b)
+        "min" = Min([Id; 2]), // min(a, b)
         "exp" = Exp(Id), // exp(a)
         "@" = Matmul([Id; 2]), // a @ b (matrix multiplication)
         "rsum" = ReduceSum([Id; 2]), // reduce_sum(a, axis)
+        "rmin" = ReduceMin([Id; 2]), // reduce_min(a, axis)
+        "rmax" = ReduceMax([Id; 2]), // reduce_max(a, axis)
         "sqr" = Sqr(Id), // square(a)
         "sqrt" = Sqrt(Id), // sqrt(a)
         "sigmoid" = Sigmoid(Id), // sigmoid(a)
+        "erf" = Erf(Id), // erf(a)
+        "abs" = Abs(Id), // abs(a)
+        "cast" = Cast([Id; 2]), // cast(dtype, a)
 
         "concat" = Concat([Id; 3]), // concat(a, b, axis)
         "bcast" = Broadcast([Id; 2]), // broadcast(a, axis)
 
+        "transpose" = Transpose(Id),
         "permute3" = Permute3([Id; 4]), // permute(A, 0, 2, 1)
+        "permute4" = Permute4([Id; 5]), // permute(A, 0, 2, 1, 3)
         "squeeze" = Squeeze([Id; 2]), // squeeze(A, axis)
         "unsqueeze" = Unsqueeze([Id; 2]), // unsqueeze(A, axis)
         "dummy" = Dummy,
@@ -282,6 +292,96 @@ impl Analysis<TileLang> for LoopAnalysis {
                 tensor_shape: None,
             },
             TileLang::Add([left, right]) => {
+                // Element-wise operations - resolve wildcards if possible
+                let tensor_shape = match (&x(left).tensor_shape, &x(right).tensor_shape) {
+                    (Some(left_shape), Some(right_shape))
+                        if left_shape.dims.len() == right_shape.dims.len() =>
+                    {
+                        let mut result_dims = Vec::new();
+                        for (l_dim, r_dim) in left_shape.dims.iter().zip(&right_shape.dims) {
+                            match (l_dim, r_dim) {
+                                (Dimension::Concrete(l), Dimension::Concrete(r)) if l == r => {
+                                    result_dims.push(Dimension::Concrete(*l));
+                                }
+                                (Dimension::Wildcard, Dimension::Concrete(r)) => {
+                                    result_dims.push(Dimension::Concrete(*r));
+                                }
+                                (Dimension::Concrete(l), Dimension::Wildcard) => {
+                                    result_dims.push(Dimension::Concrete(*l));
+                                }
+                                (Dimension::Wildcard, Dimension::Wildcard) => {
+                                    result_dims.push(Dimension::Wildcard);
+                                }
+                                _ => {
+                                    return Self::Data {
+                                        is_deleted: HashSet::new(),
+                                        read_set: Vec::new(),
+                                        write_set: Vec::new(),
+                                        tensor_shape: None,
+                                    }
+                                }
+                            }
+                        }
+                        Some(TensorShape::new_with_dims(result_dims))
+                    }
+                    (Some(shape), None) => Some(shape.clone()),
+                    (None, Some(shape)) => Some(shape.clone()),
+                    _ => None,
+                };
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Le([left, right]) => {
+                // Element-wise comparison - preserve input shape
+                let tensor_shape = match (&x(left).tensor_shape, &x(right).tensor_shape) {
+                    (Some(left_shape), Some(right_shape))
+                        if left_shape.dims.len() == right_shape.dims.len() =>
+                    {
+                        let mut result_dims = Vec::new();
+                        for (l_dim, r_dim) in left_shape.dims.iter().zip(&right_shape.dims) {
+                            match (l_dim, r_dim) {
+                                (Dimension::Concrete(l), Dimension::Concrete(r)) if l == r => {
+                                    result_dims.push(Dimension::Concrete(*l));
+                                }
+                                (Dimension::Wildcard, Dimension::Concrete(r)) => {
+                                    result_dims.push(Dimension::Concrete(*r));
+                                }
+                                (Dimension::Concrete(l), Dimension::Wildcard) => {
+                                    result_dims.push(Dimension::Concrete(*l));
+                                }
+                                (Dimension::Wildcard, Dimension::Wildcard) => {
+                                    result_dims.push(Dimension::Wildcard);
+                                }
+                                _ => {
+                                    return Self::Data {
+                                        is_deleted: HashSet::new(),
+                                        read_set: Vec::new(),
+                                        write_set: Vec::new(),
+                                        tensor_shape: None,
+                                    }
+                                }
+                            }
+                        }
+                        Some(TensorShape::new_with_dims(result_dims))
+                    }
+                    (Some(shape), None) => Some(shape.clone()),
+                    (None, Some(shape)) => Some(shape.clone()),
+                    _ => None,
+                };
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Max([left, right]) | TileLang::Min([left, right]) => {
                 // Element-wise operations - resolve wildcards if possible
                 let tensor_shape = match (&x(left).tensor_shape, &x(right).tensor_shape) {
                     (Some(left_shape), Some(right_shape))
@@ -644,10 +744,68 @@ impl Analysis<TileLang> for LoopAnalysis {
                     tensor_shape,
                 }
             }
+            TileLang::Erf(arg) => {
+                // Erf is element-wise, preserves input shape
+                let tensor_shape = x(arg).tensor_shape.clone();
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Abs(arg) => {
+                // Abs is element-wise, preserves input shape
+                let tensor_shape = x(arg).tensor_shape.clone();
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Cast([_dtype, arg]) => {
+                // Cast preserves input shape
+                let tensor_shape = x(arg).tensor_shape.clone();
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
             TileLang::ReduceSum([input, axis]) => {
                 // ReduceSum removes the specified axis dimension
                 let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
                     // Get the axis value if it's a constant
+                    egraph[*axis].nodes.iter().find_map(|n| match n {
+                        TileLang::Num(axis_val) => {
+                            let axis_idx = *axis_val as usize;
+                            if axis_idx < input_shape.dims.len() {
+                                let mut result_dims = input_shape.dims.clone();
+                                result_dims.remove(axis_idx);
+                                Some(TensorShape::new_with_dims(result_dims))
+                            } else {
+                                None
+                            }
+                        }
+                        _ => None,
+                    })
+                });
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::ReduceMin([input, axis]) | TileLang::ReduceMax([input, axis]) => {
+                // ReduceMin/ReduceMax removes the specified axis dimension
+                let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
                     egraph[*axis].nodes.iter().find_map(|n| match n {
                         TileLang::Num(axis_val) => {
                             let axis_idx = *axis_val as usize;
@@ -696,6 +854,27 @@ impl Analysis<TileLang> for LoopAnalysis {
                     tensor_shape,
                 }
             }
+            TileLang::Transpose(input) => {
+                // Transpose swaps the last two dimensions (e.g., MxN -> NxM).
+                // If rank < 2, shape inference is not possible here.
+                let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
+                    let rank = input_shape.dims.len();
+                    if rank >= 2 {
+                        let mut result_dims = input_shape.dims.clone();
+                        result_dims.swap(rank - 2, rank - 1);
+                        Some(TensorShape::new_with_dims(result_dims))
+                    } else {
+                        None
+                    }
+                });
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
             TileLang::Permute3([input, axis0, axis1, axis2]) => {
                 // Permute reorders dimensions according to specified axes
                 let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
@@ -714,6 +893,45 @@ impl Analysis<TileLang> for LoopAnalysis {
                         if axes.iter().all(|a| a.is_some()) {
                             let mut result_dims = vec![Dimension::Concrete(0); 3];
                             for i in 0..3 {
+                                if let Some(src_idx) = axes[i] {
+                                    if src_idx < input_shape.dims.len() {
+                                        result_dims[i] = input_shape.dims[src_idx].clone();
+                                    }
+                                }
+                            }
+                            Some(TensorShape::new_with_dims(result_dims))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                });
+
+                Self::Data {
+                    is_deleted: HashSet::new(),
+                    read_set: Vec::new(),
+                    write_set: Vec::new(),
+                    tensor_shape,
+                }
+            }
+            TileLang::Permute4([input, axis0, axis1, axis2, axis3]) => {
+                // Permute reorders 4D dimensions according to specified axes
+                let tensor_shape = x(input).tensor_shape.as_ref().and_then(|input_shape| {
+                    if input_shape.dims.len() >= 4 {
+                        let axes: Vec<Option<usize>> = vec![axis0, axis1, axis2, axis3]
+                            .into_iter()
+                            .map(|axis_id| {
+                                egraph[*axis_id].nodes.iter().find_map(|n| match n {
+                                    TileLang::Num(val) => Some(*val as usize),
+                                    _ => None,
+                                })
+                            })
+                            .collect();
+
+                        if axes.iter().all(|a| a.is_some()) {
+                            let mut result_dims = vec![Dimension::Concrete(0); 4];
+                            for i in 0..4 {
                                 if let Some(src_idx) = axes[i] {
                                     if src_idx < input_shape.dims.len() {
                                         result_dims[i] = input_shape.dims[src_idx].clone();
