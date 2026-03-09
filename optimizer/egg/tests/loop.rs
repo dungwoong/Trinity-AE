@@ -27,10 +27,10 @@ define_language! {
 
         "+" = Add([Id; 2]), // a + b
         "-" = Sub([Id; 2]), // a - b
-        "x" = Mul([Id; 2]), // a x b
+        "*" = Mul([Id; 2]), // a * b (elementwise)
         "/" = Div([Id; 2]), // a / b
         "exp" = Exp(Id), // exp(a)
-        "*" = Matmul([Id; 2]), // a * b
+        "@" = Matmul([Id; 2]), // a @ b (matrix multiplication)
         "rsum" = ReduceSum([Id; 2]), // reduce_sum(a, axis)
 
         "concat" = Concat([Id; 3]), // concat(a, b, axis)
@@ -117,21 +117,21 @@ fn default_tiling() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
     vec![
         rw!("factor-mul-add";
             "(seq
-                (store ?tmp1 (x ?a ?b) ?idx)
+                (store ?tmp1 (* ?a ?b) ?idx)
             (seq
-                (store ?tmp2 (x ?a ?c) ?idx)
+                (store ?tmp2 (* ?a ?c) ?idx)
                 (store ?output (+ (load ?tmp1 ?idx) (load ?tmp2 ?idx)) ?idx)
             ))" =>
             "(seq
                 (store ?tmp1 (+ ?b ?c) ?idx)
-                (store ?output (x ?a (load ?tmp1 ?idx)) ?idx)
+                (store ?output (* ?a (load ?tmp1 ?idx)) ?idx)
             )"
         ),
         rw!("tiling-mul1";
-            "(store ?tmp1 (x A B) ?idx)" => "(tile AB)"
+            "(store ?tmp1 (* A B) ?idx)" => "(tile AB)"
         ),
         rw!("tiling-mul2";
-            "(store ?tmp1 (x A C) ?idx)" => "(tile AC)"
+            "(store ?tmp1 (* A C) ?idx)" => "(tile AC)"
         ),
     ]
 }
@@ -253,25 +253,25 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         ),
         rw!("loop-comm-tail";
             "(seq (loop 0 ?n ?tile_n ?loop_var (seq
-                        (store ?a (+ (x (load ?a ?idx) 1) ?val1) ?idx)
-                        (store ?b (+ (x (load ?b ?idx) 1) ?val2) ?idx)))
+                        (store ?a (+ (* (load ?a ?idx) 1) ?val1) ?idx)
+                        (store ?b (+ (* (load ?b ?idx) 1) ?val2) ?idx)))
             (seq (store ?c (+ (load ?a ?idx) (load ?b ?idx)) ?idx) ?others))"
             =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx)) ?others)"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx)) ?others)"
         ),
         rw!("loop-comm";
             "(seq (loop 0 ?n ?tile_n ?loop_var (seq
-                        (store ?a (+ (x (load ?a ?idx) 1) ?val1) ?idx)
-                        (store ?b (+ (x (load ?b ?idx) 1) ?val2) ?idx)))
+                        (store ?a (+ (* (load ?a ?idx) 1) ?val1) ?idx)
+                        (store ?b (+ (* (load ?b ?idx) 1) ?val2) ?idx)))
                 (store ?c (+ (load ?a ?idx) (load ?b ?idx)) ?idx))"
             =>
-            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx))"
+            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) 1) (+ ?val1 ?val2)) ?idx))"
         ),
 
         // Index bug. b의 idx가 matmul을 하기 전과 후에 달라진다.
         // rw!("loop-factor-matmul";
-        //     "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx))" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (@ ?val1 ?val2)) ?idx))" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //           (store ?b (* (load ?b ?idx) ?val2) ?idx))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -279,8 +279,8 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         // rw!("loop-factor-matmul-tail";
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)" =>
-        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (@ ?val1 ?val2)) ?idx)) ?others)" =>
+        //     "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
         //           (seq (store ?b (* (load ?b ?idx) ?val2) ?idx) ?others))"
         //     if and_all!(
         //         no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -289,8 +289,8 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         // ),
 
         rw!("loop-factor-div";
-            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
                   (store ?b (/ (load ?b ?idx) ?val2) ?idx))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -298,8 +298,8 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
             )
         ),
         rw!("loop-factor-div-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
                   (seq (store ?b (/ (load ?b ?idx) ?val2) ?idx) ?others))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
@@ -307,18 +307,18 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
             )
         ),
         rw!("loop-factor-mul";
-            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (x ?val1 ?val2)) ?idx))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-                  (store ?b (x (load ?b ?idx) ?val2) ?idx))"
+            "(loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+                  (store ?b (* (load ?b ?idx) ?val2) ?idx))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
             )
         ),
         rw!("loop-factor-mul-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) (x ?val1 ?val2)) ?idx)) ?others)" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-                  (seq (store ?b (x (load ?b ?idx) ?val2) ?idx) ?others))"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+                  (seq (store ?b (* (load ?b ?idx) ?val2) ?idx) ?others))"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
@@ -326,54 +326,54 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         ),
 
         rw!("loop-dist-matmul-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
              (seq (store ?c (* (load ?b ?idx) ?val2) ?idx2) ?others))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx2) ?accm) (* ?val1 ?val2)) ?idx2)) ?others)"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx2) ?accm) (@ ?val1 ?val2)) ?idx2)) ?others)"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2"))
             )
         ),
         rw!("loop-dist-matmul";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
               (store ?c (* (load ?b ?idx) ?val2) ?idx2))" =>
-            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx2) ?accm) (* ?val1 ?val2)) ?idx2))" 
+            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx2) ?accm) (@ ?val1 ?val2)) ?idx2))" 
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2"))
             )
         ),
         rw!("loop-dist-div-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
              (seq (store ?c (/ (load ?b ?idx) ?val2) ?idx) ?others))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx)) ?others)"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2"))
             )
         ),
         rw!("loop-dist-div";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
               (store ?c (/ (load ?b ?idx) ?val2) ?idx))" =>
-            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" 
+            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (/ ?val1 ?val2)) ?idx))" 
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2"))
             )
         ),
         rw!("loop-dist-mul-tail";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-             (seq (store ?c (x (load ?b ?idx) ?val2) ?idx) ?others))" =>
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (x ?val1 ?val2)) ?idx)) ?others)"
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+             (seq (store ?c (* (load ?b ?idx) ?val2) ?idx) ?others))" =>
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (* ?val1 ?val2)) ?idx)) ?others)"
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
             )
         ),
         rw!("loop-dist-mul";
-            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (x (load ?b ?idx) ?accm) ?val1) ?idx))
-              (store ?c (x (load ?b ?idx) ?val2) ?idx))" =>
-            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (x (load ?c ?idx) ?accm) (x ?val1 ?val2)) ?idx))" 
+            "(seq (loop 0 ?n ?tile_n ?loop_var (store ?b (+ (* (load ?b ?idx) ?accm) ?val1) ?idx))
+              (store ?c (* (load ?b ?idx) ?val2) ?idx))" =>
+            "(loop 0 ?n ?tile_n ?loop_var (store ?c (+ (* (load ?c ?idx) ?accm) (* ?val1 ?val2)) ?idx))" 
             if and_all!(
                 no_dependency_with_loopvar(var("?val2"), var("?loop_var")),
                 is_not_one(var("?val2")),
@@ -381,13 +381,13 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         ),
 
         // rw!("loop-split";
-        //     "(loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (x (load (input ?a) ?idx) 1) ?body) ?idx))" =>
+        //     "(loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (* (load (input ?a) ?idx) 1) ?body) ?idx))" =>
         //     { LoopSplit{
         //         end: var("?end"), tile: var("?tile"), loop_var: var("?loop_var"), a: var("?a"), idx: var("?idx"), body: var("?body"),
         //         new_tile: var("?new_tile"), new_loop_var: var("?new_loop_var"), new_a: var("?new_a"), others: var("?others"),
         //         rhs: "(seq 
         //         (dloop 0 ?end ?new_tile ?new_loop_var 
-        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (x (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
+        //           (dloop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (* (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
         //         (store (input ?a) (rsum (load (input ?new_a) (index (fulltile) ?idx)) 0) ?idx))".parse().unwrap(),
         //     }}
         //     if and_all!(
@@ -395,13 +395,13 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         //     )
         // ),
         // rw!("loop-split-tail";
-        //     "(seq (loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (x (load (input ?a) ?idx) 1) ?body) ?idx)) ?others)" =>
+        //     "(seq (loop 0 ?end ?tile ?loop_var (store (input ?a) (+ (* (load (input ?a) ?idx) 1) ?body) ?idx)) ?others)" =>
         //     { LoopSplitTail{
         //         end: var("?end"), tile: var("?tile"), loop_var: var("?loop_var"), a: var("?a"), idx: var("?idx"), body: var("?body"),
         //         new_tile: var("?new_tile"), new_loop_var: var("?new_loop_var"), new_a: var("?new_a"), others: var("?others"),
         //         rhs: "(seq 
         //         (loop 0 ?end ?new_tile ?new_loop_var 
-        //           (loop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (x (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
+        //           (loop ?new_loop_var (+ ?new_loop_var ?new_tile) ?tile ?loop_var (store (input ?new_a) (+ (* (load (input ?new_a) (index (elem ?new_loop_var) ?idx)) 1) ?body) (index (elem ?new_loop_var) ?idx))))
         //         (seq (store (input ?a) (rsum (load (input ?new_a) (index (fulltile) ?idx)) 0) ?idx) ?others))".parse().unwrap(),
         //     }}
         //     if and_all!(
@@ -414,29 +414,29 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         rw!("assoc-add"; "(+ ?a (+ ?b ?c))" => "(+ (+ ?a ?b) ?c)"),
         rw!("assoc-add2"; "(+ (+ ?a ?b) ?c)" => "(+ ?a (+ ?b ?c))"),
 
-        rw!("comm-mul";  "(x ?a ?b)"        => "(x ?b ?a)"),
-        rw!("assoc-mul"; "(x ?a (x ?b ?c))" => "(x (x ?a ?b) ?c)"),
-        rw!("assoc-mul2"; "(x (x ?a ?b) ?c)" => "(x ?a (x ?b ?c))"),
+        rw!("comm-mul";  "(* ?a ?b)"        => "(* ?b ?a)"),
+        rw!("assoc-mul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
+        rw!("assoc-mul2"; "(* (* ?a ?b) ?c)" => "(* ?a (* ?b ?c))"),
 
-        rw!("assoc-matmul"; "(* ?a (* ?b ?c))" => "(* (* ?a ?b) ?c)"),
-        rw!("assoc-matmul2"; "(* (* ?a ?b) ?c)" => "(* ?a (* ?b ?c))"),
-        rw!("assoc-div-matmul"; "(* (/ ?a (bcast ?b ?axis)) ?c)" => "(/ (* ?a ?c) (bcast ?b ?axis))"),
+        rw!("assoc-matmul"; "(@ ?a (@ ?b ?c))" => "(@(@ ?a ?b) ?c)"),
+        rw!("assoc-matmul2"; "(@(@ ?a ?b) ?c)" => "(@ ?a (@ ?b ?c))"),
+        rw!("assoc-div-matmul"; "(@(/ ?a (bcast ?b ?axis)) ?c)" => "(/ (@ ?a ?c) (bcast ?b ?axis))"),
 
-        rw!("dist-mul-add"; "(x ?a (+ ?b ?c))"        => "(+ (x ?a ?b) (x ?a ?c))"),
-        rw!("dist-mul-sub"; "(x ?a (- ?b ?c))"        => "(- (x ?a ?b) (x ?a ?c))"),
+        rw!("dist-mul-add"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
+        rw!("dist-mul-sub"; "(* ?a (- ?b ?c))"        => "(- (* ?a ?b) (* ?a ?c))"),
         
-        rw!("dist-matmul-add"; "(* ?a (+ ?b ?c))"        => "(+ (* ?a ?b) (* ?a ?c))"),
-        rw!("dist-matmul-sub"; "(* ?a (- ?b ?c))"        => "(- (* ?a ?b) (* ?a ?c))"),
+        rw!("dist-matmul-add"; "(@ ?a (+ ?b ?c))"        => "(+ (@ ?a ?b) (@ ?a ?c))"),
+        rw!("dist-matmul-sub"; "(@ ?a (- ?b ?c))"        => "(- (@ ?a ?b) (@ ?a ?c))"),
 
-        rw!("factor-mul-add"    ; "(+ (x ?a ?b) (x ?a ?c))" => "(x ?a (+ ?b ?c))"),
-        rw!("factor-mul-sub"    ; "(- (x ?a ?b) (x ?a ?c))" => "(x ?a (- ?b ?c))"),
-        rw!("factor-matmul-add"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
-        rw!("factor-matmul-sub"    ; "(- (* ?a ?b) (* ?a ?c))" => "(* ?a (- ?b ?c))"),
+        rw!("factor-mul-add"    ; "(+ (* ?a ?b) (* ?a ?c))" => "(* ?a (+ ?b ?c))"),
+        rw!("factor-mul-sub"    ; "(- (* ?a ?b) (* ?a ?c))" => "(* ?a (- ?b ?c))"),
+        rw!("factor-matmul-add"    ; "(+ (@ ?a ?b) (@ ?a ?c))" => "(@ ?a (+ ?b ?c))"),
+        rw!("factor-matmul-sub"    ; "(- (@ ?a ?b) (@ ?a ?c))" => "(@ ?a (- ?b ?c))"),
         
-        rw!("exp-mul"; "(x (exp ?a) (exp ?b))" => "(exp (+ ?a ?b))"),
+        rw!("exp-mul"; "(* (exp ?a) (exp ?b))" => "(exp (+ ?a ?b))"),
         rw!("exp-div"; "(/ (exp ?a) (exp ?b))" => "(exp (- ?a ?b))"),
         rw!("exp0"; "(exp 0)" => "1"),
-        rw!("recip-mul-div"; "(x ?x (/ 1 ?x))" => "1" if is_not_zero(var("?x"))),
+        rw!("recip-mul-div"; "(* ?x (/ 1 ?x))" => "1" if is_not_zero(var("?x"))),
 
         rw!("geometry-of-concat"; "(concat (concat ?x ?z 0) (concat ?y ?w 0) 1)" => "(concat (concat ?x ?y 1) (concat ?z ?w 1) 0)"),
         rw!("geometry-of-concat-inv"; "(concat (concat ?x ?y 1) (concat ?z ?w 1) 0)" => "(concat (concat ?x ?z 0) (concat ?y ?w 0) 1)"),
@@ -444,14 +444,14 @@ fn rules() -> Vec<Rewrite<TileLang, LoopAnalysis>> {
         rw!("operator-comm6"; "(+ (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (+ ?x ?y) (+ ?z ?w) ?a)"),
         rw!("operator-comm6-inv"; "(concat (+ ?x ?y) (+ ?z ?w) ?a)" => "(+ (concat ?x ?z ?a) (concat ?y ?w ?a))"),
 
-        rw!("operator-comm7"; "(x (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (x ?x ?y) (x ?z ?w) ?a)"),
-        rw!("operator-comm7-inv"; "(concat (x ?x ?y) (x ?z ?w) ?a)" => "(x (concat ?x ?z ?a) (concat ?y ?w ?a))"),
+        rw!("operator-comm7"; "(* (concat ?x ?z ?a) (concat ?y ?w ?a))" => "(concat (* ?x ?y) (* ?z ?w) ?a)"),
+        rw!("operator-comm7-inv"; "(concat (* ?x ?y) (* ?z ?w) ?a)" => "(* (concat ?x ?z ?a) (concat ?y ?w ?a))"),
 
-        rw!("concat-and-matmul0"; "(* ?x (concat ?y ?z 1))" => "(concat (* ?x ?y) (* ?x ?z) 1)"),
-        rw!("concat-and-matmul0-inv"; "(concat (* ?x ?y) (* ?x ?z) 1)" => "(* ?x (concat ?y ?z 1))"),
+        rw!("concat-and-matmul0"; "(@ ?x (concat ?y ?z 1))" => "(concat (@ ?x ?y) (@ ?x ?z) 1)"),
+        rw!("concat-and-matmul0-inv"; "(concat (@ ?x ?y) (@ ?x ?z) 1)" => "(@ ?x (concat ?y ?z 1))"),
 
-        rw!("concat-and-matmul1"; "(+ (* ?a ?b) (* ?c ?d))" => "(* (concat ?a ?c 1) (concat ?b ?d 0))"),
-        rw!("concat-and-matmul1-inv"; "(* (concat ?a ?c 1) (concat ?b ?d 0))" => "(+ (* ?a ?b) (* ?c ?d))"),
+        rw!("concat-and-matmul1"; "(+ (@ ?a ?b) (@ ?c ?d))" => "(@(concat ?a ?c 1) (concat ?b ?d 0))"),
+        rw!("concat-and-matmul1-inv"; "(@(concat ?a ?c 1) (concat ?b ?d 0))" => "(+ (@ ?a ?b) (@ ?c ?d))"),
         
     ]
 }
@@ -3000,7 +3000,7 @@ fn format_enode_with_children(enode: &TileLang, children: &[String]) -> String {
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())),
         
-        TileLang::Mul(_) => format!("(x {} {})", 
+        TileLang::Mul(_) => format!("(* {} {})", 
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())),
         
@@ -3011,7 +3011,7 @@ fn format_enode_with_children(enode: &TileLang, children: &[String]) -> String {
         TileLang::Exp(_) => format!("(exp {})", 
             children.get(0).unwrap_or(&"?".to_string())),
         
-        TileLang::Matmul(_) => format!("(* {} {})", 
+        TileLang::Matmul(_) => format!("(@{} {})", 
             children.get(0).unwrap_or(&"?".to_string()),
             children.get(1).unwrap_or(&"?".to_string())),
         
@@ -3292,7 +3292,7 @@ egg::test_fn2! {bug_loop_split, rules(),
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
@@ -3307,7 +3307,7 @@ egg::test_fn2! {bug_loop_split, rules(),
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
@@ -3322,7 +3322,7 @@ egg::test_fn2! {bug_loop_split, rules(),
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
@@ -3426,7 +3426,7 @@ egg::test_fn2! {bug_loop_split, rules(),
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -3455,7 +3455,7 @@ egg::test_fn2! {bug_loop_split, rules(),
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
                     (*
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
@@ -3476,7 +3476,7 @@ egg::test_fn2! {bug_loop_split, rules(),
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
@@ -3487,7 +3487,7 @@ egg::test_fn2! {bug_loop_split, rules(),
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
@@ -3498,7 +3498,7 @@ egg::test_fn2! {bug_loop_split, rules(),
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
@@ -3580,7 +3580,7 @@ egg::test_fn2! {bug_loop_split, rules(),
             
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (elem n) (fulltile))) 1)
+                        (* (load (input C_sum) (index (elem n) (fulltile))) 1)
                         (rsum
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             2
@@ -3607,7 +3607,7 @@ egg::test_fn2! {bug_loop_split, rules(),
                 )
                 (store (input O)
                     (+
-                        (x (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
+                        (* (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
                         (*
                             (load (input C_div) (index (elem n) (fulltile) (tile p)))
                             (load (input V_cache) (index (elem n) (tile p) (fulltile)))
@@ -3633,7 +3633,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
@@ -3648,7 +3648,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
@@ -3663,7 +3663,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
@@ -3767,7 +3767,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -3797,7 +3797,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
                     (*
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
@@ -3836,7 +3836,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
@@ -3847,7 +3847,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
@@ -3858,7 +3858,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
@@ -3940,7 +3940,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
             (seq
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (elem n) (fulltile))) 1)
+                        (* (load (input C_sum) (index (elem n) (fulltile))) 1)
                         (rsum
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             2
@@ -3950,7 +3950,7 @@ egg::test_fn2! {test_attacc_skip_ft, rules(),
                 )
                 (store (input O)
                     (+
-                        (x (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
+                        (* (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
                         (*
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             (load (input V_cache) (index (elem n) (tile p) (fulltile)))
@@ -4040,7 +4040,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
             (loop 0 N tile_n n 
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (tile m))) 1)
+                        (* (load (input C_sum) (index (tile m))) 1)
                         (rsum (load (input C_exp) (index (tile m) (tile n))) 1)
                     )
                     (index (tile m))
@@ -4063,7 +4063,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
             (loop 0 N tile_n n 
                 (store (input O)
                     (+
-                        (x (load (input O) (index (tile m) (fulltile))) 1)
+                        (* (load (input O) (index (tile m) (fulltile))) 1)
                         (*
                             (load (input C_div) (index (tile m) (tile n)))
                             (load (input V) (index (tile n) (fulltile)))
@@ -4101,7 +4101,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
                     (dloop new_n (+ new_n new_tile_n) tile_n n
                         (store (input new_C_sum)
                             (+
-                                (x (load (input new_C_sum) (index (elem new_n) (index (tile m)))) 1)
+                                (* (load (input new_C_sum) (index (elem new_n) (index (tile m)))) 1)
                                 (rsum
                                     (exp
                                         (*
@@ -4130,7 +4130,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
                     (dloop new_n (+ new_n new_tile_n) tile_n n
                         (store (input new_O)
                             (+
-                                (x (load (input new_O) (index (elem new_n) (index (tile m) (fulltile)))) 1)
+                                (* (load (input new_O) (index (elem new_n) (index (tile m) (fulltile)))) 1)
                                 (*
                                     (exp
                                         (*
@@ -4207,7 +4207,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
                         (seq
                             (store (input new_C_sum)
                                 (+
-                                    (x (load (input new_C_sum) (index (elem new_n) (index (tile m)))) 1)
+                                    (* (load (input new_C_sum) (index (elem new_n) (index (tile m)))) 1)
                                     (rsum
                                         (exp
                                             (*
@@ -4223,7 +4223,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
 
                             (store (input new_O)
                                 (+
-                                    (x (load (input new_O) (index (elem new_n) (index (tile m) (fulltile)))) 1)
+                                    (* (load (input new_O) (index (elem new_n) (index (tile m) (fulltile)))) 1)
                                     (*
                                         (exp
                                             (*
@@ -4309,7 +4309,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
     //                     (seq
     //                         (store (input new_C_sum)
     //                             (+
-    //                                 (x (load (input new_C_sum) (index (elem new_n) (index (tile m)))) 1)
+    //                                 (* (load (input new_C_sum) (index (elem new_n) (index (tile m)))) 1)
     //                                 (rsum
     //                                     (exp
     //                                         (*
@@ -4324,7 +4324,7 @@ egg::test_fn2! {test_flashdecoding_skip_ft, rules(),
     //                         )
     //                         (store (input new_O)
     //                             (+
-    //                                 (x (load (input new_O) (index (elem new_n) (index (tile m) (fulltile)))) 1)
+    //                                 (* (load (input new_O) (index (elem new_n) (index (tile m) (fulltile)))) 1)
     //                                 (*
     //                                     (exp
     //                                         (*
@@ -4412,7 +4412,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
             (loop 0 N tile_n n 
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (tile m))) 1)
+                        (* (load (input C_sum) (index (tile m))) 1)
                         (rsum (load (input C_exp) (index (tile m) (tile n))) 1)
                     )
                     (index (tile m))
@@ -4435,7 +4435,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
             (loop 0 N tile_n n 
                 (store (output O)
                     (+
-                        (x (load (output O) (index (tile m) (fulltile))) 1)
+                        (* (load (output O) (index (tile m) (fulltile))) 1)
                         (*
                             (load (input C_div) (index (tile m) (tile n)))
                             (load (input V) (index (tile n) (fulltile)))
@@ -4475,7 +4475,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
             (loop 0 N tile_n n 
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (tile m))) 1)
+                        (* (load (input C_sum) (index (tile m))) 1)
                         (rsum (load (input C_exp) (index (tile m) (tile n))) 1)
                     )
                     (index (tile m))
@@ -4498,7 +4498,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
             (loop 0 N tile_n n 
                 (store (output O)
                     (+
-                        (x (load (output O) (index (tile m) (fulltile))) 1)
+                        (* (load (output O) (index (tile m) (fulltile))) 1)
                         (*
                             (load (input C_div) (index (tile m) (tile n)))
                             (load (input V) (index (tile n) (fulltile)))
@@ -4533,7 +4533,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
                 (seq
                     (store (input C_sum)
                         (+
-                            (x (load (input C_sum) (index (tile m))) 1)
+                            (* (load (input C_sum) (index (tile m))) 1)
                             (rsum 
                                 (load (input C_exp) (index (tile m) (tile n)))
                                 1
@@ -4543,7 +4543,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
                     )
                     (store (output O)
                         (+
-                            (x (load (output O) (index (tile m) (fulltile))) 1)
+                            (* (load (output O) (index (tile m) (fulltile))) 1)
                             (*
                                 (load (input C_exp) (index (tile m) (tile n)))
                                 (load (input V) (index (tile n) (fulltile)))
@@ -4598,7 +4598,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
                     )
                     (store (input C_sum)
                         (+
-                            (x (load (input C_sum) (index (tile m))) 1)
+                            (* (load (input C_sum) (index (tile m))) 1)
                             (rsum 
                                 (load (input C_exp) (index (tile m) (tile n)))
                                 1
@@ -4613,7 +4613,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
             (loop 0 N tile_n n
                 (store (output O)
                     (+
-                        (x (load (output O) (index (tile m) (fulltile))) 1)
+                        (* (load (output O) (index (tile m) (fulltile))) 1)
                         (*
                             (load (input C_exp) (index (tile m) (tile n)))
                             (load (input V) (index (tile n) (fulltile)))
@@ -4654,7 +4654,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
     //                 (dummy)
     //                 (store (input C_sum)
     //                     (+
-    //                         (x (load (input C_sum) (index (tile m))) 1)
+    //                         (* (load (input C_sum) (index (tile m))) 1)
     //                         (rsum 
     //                             (exp 
     //                                 (*
@@ -4677,7 +4677,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
     //                 (dummy)
     //                 (store (output O)
     //                     (+
-    //                         (x (load (output O) (index (tile m) (fulltile))) 1)
+    //                         (* (load (output O) (index (tile m) (fulltile))) 1)
     //                         (*
     //                             (/
     //                                 (exp 
@@ -4710,7 +4710,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
     //             (seq
     //                 (store (input C_sum)
     //                     (+
-    //                         (x (load (input C_sum) (index (tile m))) 1)
+    //                         (* (load (input C_sum) (index (tile m))) 1)
     //                         (rsum 
     //                             (exp 
     //                                 (*
@@ -4725,7 +4725,7 @@ egg::test_fn2! {test_flashattn2_skip_ft, rules(),
     //                 )
     //                 (store (output O)
     //                     (+
-    //                         (x (load (output O) (index (tile m) (fulltile))) 1)
+    //                         (* (load (output O) (index (tile m) (fulltile))) 1)
     //                         (*
     //                             (exp 
     //                                 (*
@@ -4766,7 +4766,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
                 (loop 0 K tile_k k 
                     (store (input C1) 
                         (+
-                            (x (load (input C1) (index (tile m) (tile n))) 1)
+                            (* (load (input C1) (index (tile m) (tile n))) 1)
                             (*
                                 (load (input X) (index (tile m) (tile k)))
                                 (load (input W1) (index (tile k) (tile n)))
@@ -4796,7 +4796,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
                 (loop 0 K tile_k k 
                     (store (input C2) 
                         (+
-                            (x (load (input C2) (index (tile m) (tile n))) 1)
+                            (* (load (input C2) (index (tile m) (tile n))) 1)
                             (*
                                 (load (input X) (index (tile m) (tile k)))
                                 (load (input W2) (index (tile k) (tile n)))
@@ -4810,7 +4810,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
         (loop 0 M tile_m m 
             (loop 0 N tile_n n 
                 (store (output O) 
-                    (x
+                    (*
                         (load (input C1_exp) (index (tile m) (tile n)))
                         (load (input C2) (index (tile m) (tile n)))
                     )
@@ -4831,7 +4831,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //                 (seq
     //                     (store (input C1) 
     //                         (+
-    //                             (x (load (input C1) (index (tile m) (tile n))) 1)
+    //                             (* (load (input C1) (index (tile m) (tile n))) 1)
     //                             (*
     //                                 (load (input X) (index (tile m) (tile k)))
     //                                 (load (input W1) (index (tile k) (tile n)))
@@ -4841,7 +4841,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //                     )
     //                     (store (input C2) 
     //                         (+
-    //                             (x (load (input C2) (index (tile m) (tile n))) 1)
+    //                             (* (load (input C2) (index (tile m) (tile n))) 1)
     //                             (*
     //                                 (load (input X) (index (tile m) (tile k)))
     //                                 (load (input W2) (index (tile k) (tile n)))
@@ -4854,7 +4854,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //         (seq
     //             (dummy)
     //             (store (output O) 
-    //                 (x
+    //                 (*
     //                     (exp
     //                         (load (input C1) (index (tile m) (tile n)))
     //                     )
@@ -4875,7 +4875,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //             (loop 0 K tile_k k 
     //                 (store (input C1) 
     //                     (+
-    //                         (x (load (input C1) (index (tile m) (tile n))) 1)
+    //                         (* (load (input C1) (index (tile m) (tile n))) 1)
     //                         (*
     //                             (load (input X) (index (tile m) (tile k)))
     //                             (load (input W1) (index (tile k) (tile n)))
@@ -4888,7 +4888,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //             (loop 0 K tile_k k 
     //                 (store (input C2) 
     //                     (+
-    //                         (x (load (input C2) (index (tile m) (tile n))) 1)
+    //                         (* (load (input C2) (index (tile m) (tile n))) 1)
     //                         (*
     //                             (load (input X) (index (tile m) (tile k)))
     //                             (load (input W2) (index (tile k) (tile n)))
@@ -4900,7 +4900,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
             
     //         (seq
     //             (store (output O) 
-    //                 (x
+    //                 (*
     //                     (exp
     //                         (load (input C1) (index (tile m) (tile n)))
     //                     )
@@ -4928,7 +4928,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //             (loop 0 K tile_k k 
     //                 (store (input C1) 
     //                     (+
-    //                         (x (load (input C1) (index (tile m) (tile n))) 1)
+    //                         (* (load (input C1) (index (tile m) (tile n))) 1)
     //                         (*
     //                             (load (input X) (index (tile m) (tile k)))
     //                             (load (input W1) (index (tile k) (tile n)))
@@ -4941,8 +4941,8 @@ egg::test_fn2! {test_gated_mlp, rules(),
     //             (loop 0 K tile_k k 
     //                 (store (output O) 
     //                     (+
-    //                         (x (load (output O) (index (tile m) (tile n))) 1)
-    //                         (x
+    //                         (* (load (output O) (index (tile m) (tile n))) 1)
+    //                         (*
     //                             (*
     //                                 (load (input X) (index (tile m) (tile k)))
     //                                 (load (input W2) (index (tile k) (tile n)))
@@ -4975,7 +4975,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
                     (seq
                         (store (input C1) 
                             (+
-                                (x (load (input C1) (index (tile m) (tile n))) 1)
+                                (* (load (input C1) (index (tile m) (tile n))) 1)
                                 (*
                                     (load (input X) (index (tile m) (tile k)))
                                     (load (input W1) (index (tile k) (tile n)))
@@ -4985,7 +4985,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
                         )
                         (store (input C2) 
                             (+
-                                (x (load (input C2) (index (tile m) (tile n))) 1)
+                                (* (load (input C2) (index (tile m) (tile n))) 1)
                                 (*
                                     (load (input X) (index (tile m) (tile k)))
                                     (load (input W2) (index (tile k) (tile n)))
@@ -5003,7 +5003,7 @@ egg::test_fn2! {test_gated_mlp, rules(),
                     (index (tile m) (tile n))
                 )
                 (store (output O) 
-                    (x
+                    (*
                         (load (input C1_exp) (index (tile m) (tile n)))
                         (load (input C2) (index (tile m) (tile n)))
                     )
@@ -5021,7 +5021,7 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input C)
-                    (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -5031,7 +5031,7 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
     (seq
         (loop 0 N tile_n n
             (store (input D)
-                (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -5063,7 +5063,7 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input C)
-                    (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -5073,7 +5073,7 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
     (seq
         (loop 0 N tile_n n
             (store (input D)
-                (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -5106,13 +5106,13 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
             (loop 0 N tile_n n
                 (seq
                     (store (input C)
-                        (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                        (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                         (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                         ))
                         (index (fulltile) (tile p))
                     )
                     (store (input D)
-                        (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                        (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                         (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                         ))
                         (index (fulltile) (fulltile))
@@ -5139,13 +5139,13 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
             (loop 0 N tile_n n
                 (seq
                     (store (input C)
-                        (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                        (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                         (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                         ))
                         (index (fulltile) (tile p))
                     )
                     (store (input E)
-                        (+ (x (load (input E) (index (fulltile) (tile p))) 1)
+                        (+ (* (load (input E) (index (fulltile) (tile p))) 1)
                             (* (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))) (load (input B) (index (fulltile) (tile p))))
                         )
                         (index (fulltile) (tile p))
@@ -5166,7 +5166,7 @@ egg::test_fn2! {test_lora_skip_ft, rules(),
         (loop 0 N tile_n n
             (store (output O)
                 (+
-                    (x (load (output O) (index (fulltile) (tile p))) 1)
+                    (* (load (output O) (index (fulltile) (tile p))) 1)
                     (*
                         (concat
                             (load (input X) (index (fulltile) (tile n)))
@@ -6103,12 +6103,12 @@ egg::test_fn2! {loop_dist1, rules(),
             (seq
                 (store (output C) (+ (load (input A) (index (tile n))) 1) (index (tile n)))
             (seq
-                (store (output B) (+ (x (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
+                (store (output B) (+ (* (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
                 (store (output D) (* (load (input A) (index (tile n))) (load (output C) (index (tile n)))) (index (tile n)))
             )
             )
         )
-        (store (output E) (x (load (output B) (index)) 10) (index))
+        (store (output E) (* (load (output B) (index)) 10) (index))
     )
     "
     =>
@@ -6118,12 +6118,12 @@ egg::test_fn2! {loop_dist1, rules(),
             (seq
                 (store (output C) (+ (load (input A) (index (tile n))) 1) (index (tile n)))
             (seq
-                (store (output B) (+ (x (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
+                (store (output B) (+ (* (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
                 (store (output D) (* (load (input A) (index (tile n))) (+ (load (input A) (index (tile n))) 1)) (index (tile n)))
             )
             )
         )
-        (store (output E) (x (load (output B) (index)) 10) (index))
+        (store (output E) (* (load (output B) (index)) 10) (index))
     )
     "
     ,
@@ -6131,14 +6131,14 @@ egg::test_fn2! {loop_dist1, rules(),
     (seq
         (loop 0 N tile_n n 
             (seq
-                (store (output B) (+ (x (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
+                (store (output B) (+ (* (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
             (seq
                 (store (output C) (+ (load (input A) (index (tile n))) 1) (index (tile n)))
                 (store (output D) (* (load (input A) (index (tile n))) (+ (load (input A) (index (tile n))) 1)) (index (tile n)))
             )
             )
         )
-        (store (output E) (x (load (output B) (index)) 10) (index))
+        (store (output E) (* (load (output B) (index)) 10) (index))
     )
     "
     ,
@@ -6146,7 +6146,7 @@ egg::test_fn2! {loop_dist1, rules(),
     (seq
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (+ (x (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
         )
         (loop 0 N tile_n n 
             (seq
@@ -6155,14 +6155,14 @@ egg::test_fn2! {loop_dist1, rules(),
             )
         )
     )
-        (store (output E) (x (load (output B) (index)) 10) (index))
+        (store (output E) (* (load (output B) (index)) 10) (index))
     )
     "
     ,
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (+ (x (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
         )
     (seq
         (loop 0 N tile_n n 
@@ -6171,7 +6171,7 @@ egg::test_fn2! {loop_dist1, rules(),
                 (store (output D) (* (load (input A) (index (tile n))) (+ (load (input A) (index (tile n))) 1)) (index (tile n)))
             )
         )
-        (store (output E) (x (load (output B) (index)) 10) (index))
+        (store (output E) (* (load (output B) (index)) 10) (index))
     ))
     "
     ,
@@ -6180,7 +6180,7 @@ egg::test_fn2! {loop_dist1, rules(),
         (seq
             (store (output C) (+ (load (input A) (index (tile n))) 1) (index (tile n)))
         (seq
-            (store (output E) (+ (x (load (output E) (index)) 3) (x 10 (load (input A) (index (tile n))))) (index))
+            (store (output E) (+ (* (load (output E) (index)) 3) (* 10 (load (input A) (index (tile n))))) (index))
             (store (output D) (* (load (input A) (index (tile n))) (+ (load (input A) (index (tile n))) 1)) (index (tile n)))
         )
         )
@@ -6194,7 +6194,7 @@ egg::test_fn2! {loop_factor1, rules(),
         (seq
             (store (output C) (+ (load (input A) (index (tile n))) 1) (index (tile n)))
         (seq
-            (store (output B) (+ (x (load (output B) (index)) 3) (x 10 (load (input A) (index (tile n))))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 3) (* 10 (load (input A) (index (tile n))))) (index))
             (store (output D) (* (load (input A) (index (tile n))) (load (output C) (index (tile n)))) (index (tile n)))
         )
         )
@@ -6207,12 +6207,12 @@ egg::test_fn2! {loop_factor1, rules(),
             (seq
                 (store (output C) (+ (load (input A) (index (tile n))) 1) (index (tile n)))
             (seq
-                (store (output B) (+ (x (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
+                (store (output B) (+ (* (load (output B) (index)) 3) (load (input A) (index (tile n)))) (index))
                 (store (output D) (* (load (input A) (index (tile n))) (+ (load (input A) (index (tile n))) 1)) (index (tile n)))
             )
             )
         )
-        (store (output B) (x (load (output B) (index)) 10) (index))
+        (store (output B) (* (load (output B) (index)) 10) (index))
     )
     "
 }
@@ -6242,7 +6242,7 @@ egg::test_fn2! {loop_factor2, rules(),
             (loop 0 M tile_m m
                 (store (input B) 
                     (+
-                        (x (load (input B) (index (tile n))) 1)
+                        (* (load (input B) (index (tile n))) 1)
                         (rsum (load (input A) (index (tile n) (tile m))) 1)
                     )
                     (index (tile n))
@@ -6261,7 +6261,7 @@ egg::test_fn2! {loop_factor2, rules(),
                     )
                     (store (input E)
                         (+
-                            (x (load (input E) (index (tile n) (fulltile))) 1)
+                            (* (load (input E) (index (tile n) (fulltile))) 1)
                             (*
                                 (load (input D) (index (tile n) (tile m)))
                                 (load (input F) (index (tile m) (fulltile)))
@@ -6282,14 +6282,14 @@ egg::test_fn2! {loop_factor2, rules(),
                 (seq
                     (store (input B) 
                         (+
-                            (x (load (input B) (index (tile n))) 1)
+                            (* (load (input B) (index (tile n))) 1)
                             (rsum (load (input A) (index (tile n) (tile m))) 1)
                         )
                         (index (tile n))
                     )
                     (store (input E)
                         (+
-                            (x (load (input E) (index (tile n) (fulltile))) 1)
+                            (* (load (input E) (index (tile n) (fulltile))) 1)
                             (*
                                 (load (input C) (index (tile n) (tile m)))
                                 (load (input F) (index (tile m) (fulltile)))
@@ -6328,14 +6328,14 @@ egg::test_fn2! {loop_factor2, rules(),
                 (seq
                     (store (input B) 
                         (+
-                            (x (load (input B) (index (tile n))) 1)
+                            (* (load (input B) (index (tile n))) 1)
                             (rsum (load (input A) (index (tile n) (tile m))) 1)
                         )
                         (index (tile n))
                     )
                     (store (input E)
                         (+
-                            (x (load (input E) (index (tile n) (fulltile))) 1)
+                            (* (load (input E) (index (tile n) (fulltile))) 1)
                             (*
                                 (load (input C) (index (tile n) (tile m)))
                                 (load (input F) (index (tile m) (fulltile)))
@@ -6372,7 +6372,7 @@ egg::test_fn2! {loop_split1, rules(),
     "
     (seq
         (loop 0 N tile_n n
-            (store (input B) (+ (x (load (input B) (index)) 1) (x 10 (rsum (load (input A) (index (tile n))) 1))) (index))
+            (store (input B) (+ (* (load (input B) (index)) 1) (* 10 (rsum (load (input A) (index (tile n))) 1))) (index))
         )
         (store (input D) (exp (load (input C) (index))) (index))
     )
@@ -6384,8 +6384,8 @@ egg::test_fn2! {loop_split1, rules(),
             (dloop new_n (+ new_n new_tile_n) tile_n n
                 (store (input new_B)
                     (+
-                        (x (load (input new_B) (index (elem new_n) (index))) 1)
-                        (x 10 (rsum (load (input A) (index (tile n))) 1))
+                        (* (load (input new_B) (index (elem new_n) (index))) 1)
+                        (* 10 (rsum (load (input A) (index (tile n))) 1))
                     )
                     (index (elem new_n) (index))
                 )
@@ -6424,9 +6424,9 @@ egg::test_fn2! {forward_and_fission1, rules(),
     "
     (loop 0 N tile_n n 
         (seq
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
+                (+ (* (load (output D) (index)) 1)
                     (* (load (output B) (index (tile n))) (load (input C) (index (tile n))))
                 )
                 (index)
@@ -6438,10 +6438,10 @@ egg::test_fn2! {forward_and_fission1, rules(),
     "
     (loop 0 N tile_n n 
         (seq
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (* (x 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
+                (+ (* (load (output D) (index)) 1)
+                    (* (* 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
                 )
                 (index)
             )
@@ -6452,12 +6452,12 @@ egg::test_fn2! {forward_and_fission1, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
         )
         (loop 0 N tile_n n 
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (* (x 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
+                (+ (* (load (output D) (index)) 1)
+                    (* (* 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
                 )
                 (index)
             )
@@ -6469,14 +6469,14 @@ egg::test_fn2! {forward_and_fission1, rules(),
     // (seq
     //     (loop 0 N tile_n n 
     //         (store (output D) 
-    //             (+ (x (load (output D) (index)) 1)
-    //                 (* (x 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
+    //             (+ (* (load (output D) (index)) 1)
+    //                 (* (* 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
     //             )
     //             (index)
     //         )
     //     )
     //     (loop 0 N tile_n n 
-    //         (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+    //         (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
     //     )
     // )
     // "
@@ -6485,12 +6485,12 @@ egg::test_fn2! {seq_comm3, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
         )
         (loop 0 N tile_n n 
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (* (x 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
+                (+ (* (load (output D) (index)) 1)
+                    (* (* 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
                 )
                 (index)
             )
@@ -6502,14 +6502,14 @@ egg::test_fn2! {seq_comm3, rules(),
     (seq
         (loop 0 N tile_n n 
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (* (x 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
+                (+ (* (load (output D) (index)) 1)
+                    (* (* 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
                 )
                 (index)
             )
         )
         (loop 0 N tile_n n 
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
         )
     )
     "
@@ -6532,10 +6532,10 @@ egg::test_fn2! {forward_and_dist1, rules(),
     "
     (loop 0 N tile_n n 
         (seq
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (x (load (output B) (index (tile n))) (load (input C) (index (tile n))))
+                (+ (* (load (output D) (index)) 1)
+                    (* (load (output B) (index (tile n))) (load (input C) (index (tile n))))
                 )
                 (index)
             )
@@ -6546,10 +6546,10 @@ egg::test_fn2! {forward_and_dist1, rules(),
     "
     (loop 0 N tile_n n 
         (seq
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (x (x 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
+                (+ (* (load (output D) (index)) 1)
+                    (* (* 2 (load (input A) (index (tile n)))) (load (input C) (index (tile n))))
                 )
                 (index)
             )
@@ -6560,10 +6560,10 @@ egg::test_fn2! {forward_and_dist1, rules(),
     "
     (loop 0 N tile_n n 
         (seq
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (x (x (load (input A) (index (tile n))) (load (input C) (index (tile n)))) 2)
+                (+ (* (load (output D) (index)) 1)
+                    (* (* (load (input A) (index (tile n))) (load (input C) (index (tile n)))) 2)
                 )
                 (index)
             )
@@ -6574,12 +6574,12 @@ egg::test_fn2! {forward_and_dist1, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
         )
         (loop 0 N tile_n n 
             (store (output D) 
-                (+ (x (load (output D) (index)) 1)
-                    (x (x (load (input A) (index (tile n))) (load (input C) (index (tile n)))) 2)
+                (+ (* (load (output D) (index)) 1)
+                    (* (* (load (input A) (index (tile n))) (load (input C) (index (tile n)))) 2)
                 )
                 (index)
             )
@@ -6590,18 +6590,18 @@ egg::test_fn2! {forward_and_dist1, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+            (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
         )
         (seq
             (loop 0 N tile_n n 
                 (store (output D) 
-                    (+ (x (load (output D) (index)) 1)
-                        (x (load (input A) (index (tile n))) (load (input C) (index (tile n))))
+                    (+ (* (load (output D) (index)) 1)
+                        (* (load (input A) (index (tile n))) (load (input C) (index (tile n))))
                     )
                     (index)
                 )
             )
-            (store (output D) (x (load (output D) (index)) 2) (index))
+            (store (output D) (* (load (output D) (index)) 2) (index))
         )
     )
     "
@@ -6610,16 +6610,16 @@ egg::test_fn2! {forward_and_dist1, rules(),
     (seq
         (loop 0 N tile_n n 
             (seq
-                (store (output B) (x 2 (load (input A) (index (tile n)))) (index (tile n)))
+                (store (output B) (* 2 (load (input A) (index (tile n)))) (index (tile n)))
                 (store (output D) 
-                    (+ (x (load (output D) (index)) 1)
-                        (x (load (input A) (index (tile n))) (load (input C) (index (tile n))))
+                    (+ (* (load (output D) (index)) 1)
+                        (* (load (input A) (index (tile n))) (load (input C) (index (tile n))))
                     )
                     (index)
                 )
             )
         )
-        (store (output D) (x (load (output D) (index)) 2) (index))
+        (store (output D) (* (load (output D) (index)) 2) (index))
     )
     "
 }
@@ -6644,10 +6644,10 @@ egg::test_fn2! {dist_and_fusion1, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (+ (x (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
         )
         (loop 0 N tile_n n
-            (store (output D) (+ (x (load (output D) (index)) 1) (/ (load (input C) (index (tile n))) (load (output B) (index)))) (index))
+            (store (output D) (+ (* (load (output D) (index)) 1) (/ (load (input C) (index (tile n))) (load (output B) (index)))) (index))
         )
     )
     "
@@ -6655,11 +6655,11 @@ egg::test_fn2! {dist_and_fusion1, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (+ (x (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
         )
     (seq
         (loop 0 N tile_n n
-            (store (output D) (+ (x (load (output D) (index)) 1) (load (input C) (index (tile n)))) (index))
+            (store (output D) (+ (* (load (output D) (index)) 1) (load (input C) (index (tile n)))) (index))
         )
         (store (output D) (/ (load (output D) (index)) (load (output B) (index))) (index))
     )
@@ -6670,8 +6670,8 @@ egg::test_fn2! {dist_and_fusion1, rules(),
     (seq
         (loop 0 N tile_n n 
             (seq
-                (store (output B) (+ (x (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
-                (store (output D) (+ (x (load (output D) (index)) 1) (load (input C) (index (tile n)))) (index))
+                (store (output B) (+ (* (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
+                (store (output D) (+ (* (load (output D) (index)) 1) (load (input C) (index (tile n)))) (index))
             )
         )
         (store (output D) (/ (load (output D) (index)) (load (output B) (index))) (index))
@@ -6692,10 +6692,10 @@ egg::test_fn_not2! {not_fusible2, rules(),
     "
     (seq
         (loop 0 N tile_n n 
-            (store (output B) (+ (x (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
         )
         (loop 0 N tile_n n
-            (store (output D) (+ (x (load (output D) (index)) 1) (/ (load (input C) (index (tile n))) (load (output B) (index)))) (index))
+            (store (output D) (+ (* (load (output D) (index)) 1) (/ (load (input C) (index (tile n))) (load (output B) (index)))) (index))
         )
     )
     "
@@ -6703,8 +6703,8 @@ egg::test_fn_not2! {not_fusible2, rules(),
     "
     (loop 0 N tile_n n
         (seq
-            (store (output B) (+ (x (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
-            (store (output D) (+ (x (load (output D) (index)) 1) (/ (load (input C) (index (tile n))) (load (output B) (index)))) (index))
+            (store (output B) (+ (* (load (output B) (index)) 1) (load (input A) (index (tile n)))) (index))
+            (store (output D) (+ (* (load (output D) (index)) 1) (/ (load (input C) (index (tile n))) (load (output B) (index)))) (index))
         )
     )
     "
@@ -6729,7 +6729,7 @@ egg::test_fn2! {loop_split2, rules(),
             (loop 0 K tile_k k 
                 (store (input C1) 
                     (+
-                        (x (load (input C1) (index (fulltile) (tile n))) 1)
+                        (* (load (input C1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W1) (index (tile k) (tile n)))
@@ -6749,7 +6749,7 @@ egg::test_fn2! {loop_split2, rules(),
             (loop 0 K tile_k k 
                 (store (input C1) 
                     (+
-                        (x (load (input C1) (index (fulltile) (tile n))) 1)
+                        (* (load (input C1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W1) (index (tile k) (tile n)))
@@ -6933,7 +6933,7 @@ egg::test_fn2! {const_loop_fusion_diff1, rules(),
         (loop 0 2048 tile_m m
             (loop 0 4 tile_h h
                 (store (input C)
-                    (x
+                    (*
                         (load (input B) (index (tile m) (tile h) (fulltile)))
                         10
                     )
@@ -6953,7 +6953,7 @@ egg::test_fn2! {const_loop_fusion_diff1, rules(),
                     (index (tile m) (elem n) (fulltile))
                 )
                 (store (input C)
-                    (x
+                    (*
                         (load (input B) (index (tile m) (elem n) (fulltile)))
                         10
                     )
@@ -7005,7 +7005,7 @@ egg::test_fn2! {const_loop_fusion_same4, rules(),
             (loop 0 2048 tile_k k
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
@@ -7020,7 +7020,7 @@ egg::test_fn2! {const_loop_fusion_same4, rules(),
             (loop 0 2048 tile_k k
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
@@ -7035,7 +7035,7 @@ egg::test_fn2! {const_loop_fusion_same4, rules(),
             (loop 0 2048 tile_k k
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
@@ -7075,7 +7075,7 @@ egg::test_fn2! {const_loop_fusion_same4, rules(),
                 (seq
                     (store (input Q1)
                         (+
-                            (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                            (* (load (input Q1) (index (fulltile) (tile n))) 1)
                             (*
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WQ) (index (tile k) (tile n)))
@@ -7086,7 +7086,7 @@ egg::test_fn2! {const_loop_fusion_same4, rules(),
                 (seq
                     (store (input K1)
                         (+
-                            (x (load (input K1) (index (fulltile) (tile n))) 1)
+                            (* (load (input K1) (index (fulltile) (tile n))) 1)
                             (*
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WK) (index (tile k) (tile n)))
@@ -7097,7 +7097,7 @@ egg::test_fn2! {const_loop_fusion_same4, rules(),
 
                     (store (input V1)
                         (+
-                            (x (load (input V1) (index (fulltile) (tile n))) 1)
+                            (* (load (input V1) (index (fulltile) (tile n))) 1)
                             (*
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WV) (index (tile k) (tile n)))
@@ -7176,7 +7176,7 @@ egg::test_fn2! {const_loop_fusion_same6, rules(),
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
@@ -7187,7 +7187,7 @@ egg::test_fn2! {const_loop_fusion_same6, rules(),
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
@@ -7198,7 +7198,7 @@ egg::test_fn2! {const_loop_fusion_same6, rules(),
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
@@ -7243,7 +7243,7 @@ egg::test_fn2! {const_loop_fusion_same6, rules(),
                 (seq
                     (store (input Q1)
                         (+
-                            (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                            (* (load (input Q1) (index (fulltile) (tile n))) 1)
                             (*
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WQ) (index (tile k) (tile n)))
@@ -7254,7 +7254,7 @@ egg::test_fn2! {const_loop_fusion_same6, rules(),
                 (seq
                     (store (input K1)
                         (+
-                            (x (load (input K1) (index (fulltile) (tile n))) 1)
+                            (* (load (input K1) (index (fulltile) (tile n))) 1)
                             (*
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WK) (index (tile k) (tile n)))
@@ -7265,7 +7265,7 @@ egg::test_fn2! {const_loop_fusion_same6, rules(),
 
                     (store (input V1)
                         (+
-                            (x (load (input V1) (index (fulltile) (tile n))) 1)
+                            (* (load (input V1) (index (fulltile) (tile n))) 1)
                             (*
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WV) (index (tile k) (tile n)))
@@ -7307,7 +7307,7 @@ egg::test_fn2! {debug_lora1, rules(),
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input C)
-                    (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -7317,7 +7317,7 @@ egg::test_fn2! {debug_lora1, rules(),
     (seq
         (loop 0 N tile_n n
             (store (input D)
-                (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -7349,7 +7349,7 @@ egg::test_fn2! {debug_lora1, rules(),
         (seq 
             (loop 0 N tile_n n 
                 (store (input C) 
-                    (+ (x (load (input C) (index fulltile (tile p))) 1) 
+                    (+ (* (load (input C) (index fulltile (tile p))) 1) 
                     (* (load (input X) (index fulltile (tile n))) 
                         (load (input W) (index (tile n) (tile p))))) 
                     (index fulltile (tile p))))
@@ -7357,7 +7357,7 @@ egg::test_fn2! {debug_lora1, rules(),
                 (loop 0 P tile_p p 
                     (loop 0 N tile_n n 
                         (store (input D) 
-                            (+ (x 1 (load (input D) (index fulltile fulltile))) 
+                            (+ (* 1 (load (input D) (index fulltile fulltile))) 
                             (* (load (input X) (index fulltile (tile n))) 
                                 (load (input A) (index (tile n) fulltile)))) 
                             (index fulltile fulltile))))
@@ -7380,16 +7380,16 @@ egg::test_fn2! {debug_lora1, rules(),
 egg::test_fn2! {test_default_tiling, default_tiling(),
     "
     (seq
-        (store tmp1 (x A B) (index))
+        (store tmp1 (* A B) (index))
     (seq
-        (store tmp2 (x A C) (index))
+        (store tmp2 (* A C) (index))
         (store O (+ (load tmp1 (index)) (load tmp2 (index))) (index))
     ))
     "
     =>
     "(seq
         (store tmp1 (+ B C) (index))
-        (store O (x A (load tmp1 (index))) (index))
+        (store O (* A (load tmp1 (index))) (index))
     )
     "
 }
@@ -7430,7 +7430,7 @@ fn saturate_gated_mlp_skip_ft() {
             (loop 0 K tile_k k 
                 (store (input C1) 
                     (+
-                        (x (load (input C1) (index (fulltile) (tile n))) 1)
+                        (* (load (input C1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W1) (index (tile k) (tile n)))
@@ -7456,7 +7456,7 @@ fn saturate_gated_mlp_skip_ft() {
             (loop 0 K tile_k k 
                 (store (input C2) 
                     (+
-                        (x (load (input C2) (index (fulltile) (tile n))) 1)
+                        (* (load (input C2) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W2) (index (tile k) (tile n)))
@@ -7468,7 +7468,7 @@ fn saturate_gated_mlp_skip_ft() {
         )
         (loop 0 N tile_n n 
             (store (output O) 
-                (x
+                (*
                     (load (input C1_exp) (index (fulltile) (tile n)))
                     (load (input C2) (index (fulltile) (tile n)))
                 )
@@ -7498,7 +7498,7 @@ fn saturate_gated_mlp() {
                 (loop 0 K tile_k k 
                     (store (input C1) 
                         (+
-                            (x (load (input C1) (index (tile m) (tile n))) 1)
+                            (* (load (input C1) (index (tile m) (tile n))) 1)
                             (*
                                 (load (input X) (index (tile m) (tile k)))
                                 (load (input W1) (index (tile k) (tile n)))
@@ -7528,7 +7528,7 @@ fn saturate_gated_mlp() {
                 (loop 0 K tile_k k 
                     (store (input C2) 
                         (+
-                            (x (load (input C2) (index (tile m) (tile n))) 1)
+                            (* (load (input C2) (index (tile m) (tile n))) 1)
                             (*
                                 (load (input X) (index (tile m) (tile k)))
                                 (load (input W2) (index (tile k) (tile n)))
@@ -7542,7 +7542,7 @@ fn saturate_gated_mlp() {
         (loop 0 M tile_m m 
             (loop 0 N tile_n n 
                 (store (output O) 
-                    (x
+                    (*
                         (load (input C1_exp) (index (tile m) (tile n)))
                         (load (input C2) (index (tile m) (tile n)))
                     )
@@ -7573,7 +7573,7 @@ fn saturate_lora() {
             (loop 0 P tile_p p 
                 (loop 0 N tile_n n
                     (store (input C)
-                        (+ (x (load (input C) (index (tile m) (tile p))) 1)
+                        (+ (* (load (input C) (index (tile m) (tile p))) 1)
                         (* (load (input X) (index (tile m) (tile n))) (load (input W) (index (tile n) (tile p)))
                         ))
                         (index (tile m) (tile p))
@@ -7586,7 +7586,7 @@ fn saturate_lora() {
             (loop 0 K tile_k k 
                 (loop 0 N tile_n n
                     (store (input D)
-                        (+ (x (load (input D) (index (tile m) (tile k))) 1)
+                        (+ (* (load (input D) (index (tile m) (tile k))) 1)
                         (* (load (input X) (index (tile m) (tile n))) (load (input A) (index (tile n) (tile k)))
                         ))
                         (index (tile m) (tile k))
@@ -7599,7 +7599,7 @@ fn saturate_lora() {
             (loop 0 P tile_p p 
                 (loop 0 K tile_k k
                     (store (input E)
-                        (+ (x (load (input E) (index (tile m) (tile p))) 1)
+                        (+ (* (load (input E) (index (tile m) (tile p))) 1)
                         (* (load (input D) (index (tile m) (tile k))) (load (input B) (index (tile k) (tile p)))
                         ))
                         (index (tile m) (tile p))
@@ -7633,7 +7633,7 @@ fn saturate_lora_skip_ft() {
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (input C)
-                    (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (input C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -7643,7 +7643,7 @@ fn saturate_lora_skip_ft() {
     (seq
         (loop 0 N tile_n n
             (store (input D)
-                (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -7695,7 +7695,7 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
@@ -7710,7 +7710,7 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
@@ -7725,7 +7725,7 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
@@ -7829,7 +7829,7 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -7858,7 +7858,7 @@ fn saturate_attacc_skip_ft() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
                     (*
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
@@ -7914,7 +7914,7 @@ fn saturate_flashattn2_skip_ft() {
             (loop 0 N tile_n n 
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (tile m))) 1)
+                        (* (load (input C_sum) (index (tile m))) 1)
                         (rsum (load (input C_exp) (index (tile m) (tile n))) 1)
                     )
                     (index (tile m))
@@ -7937,7 +7937,7 @@ fn saturate_flashattn2_skip_ft() {
             (loop 0 N tile_n n 
                 (store (output O)
                     (+
-                        (x (load (output O) (index (tile m) (fulltile))) 1)
+                        (* (load (output O) (index (tile m) (fulltile))) 1)
                         (*
                             (load (input C_div) (index (tile m) (tile n)))
                             (load (input V) (index (tile n) (fulltile)))
@@ -7958,7 +7958,7 @@ fn saturate_flashattn2_skip_ft() {
     //     (loop 0 P tile_p p 
     //         (loop 0 N tile_n n
     //             (store (input C)
-    //                 (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+    //                 (+ (* (load (input C) (index (fulltile) (tile p))) 1)
     //                 (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
     //                 ))
     //                 (index (fulltile) (tile p))
@@ -7968,7 +7968,7 @@ fn saturate_flashattn2_skip_ft() {
     // (seq
     //     (loop 0 N tile_n n
     //         (store (input D)
-    //             (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+    //             (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
     //             (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
     //             ))
     //             (index (fulltile) (fulltile))
@@ -7998,13 +7998,13 @@ fn saturate_flashattn2_skip_ft() {
     // let expr = "
     // (seq
     //     (loop 0 N tile_n n
-    //         (store (input B) (+ (x (load (input B) (index)) 1) (x 10 (rsum (load (input A) (index (tile n))) 1))) (index))
+    //         (store (input B) (+ (* (load (input B) (index)) 1) (* 10 (rsum (load (input A) (index (tile n))) 1))) (index))
     //     )
     // (seq
     //     (loop 0 N tile_n n
-    //         (store (input B) (+ (x (load (input B) (index)) 1) (x 10 (rsum (load (input A) (index (tile n))) 1))) (index))
+    //         (store (input B) (+ (* (load (input B) (index)) 1) (* 10 (rsum (load (input A) (index (tile n))) 1))) (index))
     //     )
-    //     (store (input B) (x (load (input B) (index)) 20) (index))
+    //     (store (input B) (* (load (input B) (index)) 20) (index))
     // )
     // )
     // ";
@@ -8063,7 +8063,7 @@ fn extract_expressions() {
     //     (loop 0 P tile_p p 
     //         (loop 0 N tile_n n
     //             (store (input C)
-    //                 (+ (x (load (input C) (index (fulltile) (tile p))) 1)
+    //                 (+ (* (load (input C) (index (fulltile) (tile p))) 1)
     //                 (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
     //                 ))
     //                 (index (fulltile) (tile p))
@@ -8073,7 +8073,7 @@ fn extract_expressions() {
     // (seq
     //     (loop 0 N tile_n n
     //         (store (input D)
-    //             (+ (x (load (input D) (index (fulltile) (fulltile))) 1)
+    //             (+ (* (load (input D) (index (fulltile) (fulltile))) 1)
     //             (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
     //             ))
     //             (index (fulltile) (fulltile))
@@ -8105,7 +8105,7 @@ fn extract_expressions() {
     //         (loop 0 K tile_k k 
     //             (store (input C1) 
     //                 (+
-    //                     (x (load (input C1) (index (fulltile) (tile n))) 1)
+    //                     (* (load (input C1) (index (fulltile) (tile n))) 1)
     //                     (*
     //                         (load (input X) (index (fulltile) (tile k)))
     //                         (load (input W1) (index (tile k) (tile n)))
@@ -8131,7 +8131,7 @@ fn extract_expressions() {
     //         (loop 0 K tile_k k 
     //             (store (input C2) 
     //                 (+
-    //                     (x (load (input C2) (index (fulltile) (tile n))) 1)
+    //                     (* (load (input C2) (index (fulltile) (tile n))) 1)
     //                     (*
     //                         (load (input X) (index (fulltile) (tile k)))
     //                         (load (input W2) (index (tile k) (tile n)))
@@ -8143,7 +8143,7 @@ fn extract_expressions() {
     //     )
     //     (loop 0 N tile_n n 
     //         (store (output O) 
-    //             (x
+    //             (*
     //                 (load (input C1_exp) (index (fulltile) (tile n)))
     //                 (load (input C2) (index (fulltile) (tile n)))
     //             )
@@ -8160,7 +8160,7 @@ fn extract_expressions() {
         (loop 0 2048 tile_k k
             (store (input Q1)
                 (+
-                    (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                    (* (load (input Q1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
@@ -8175,7 +8175,7 @@ fn extract_expressions() {
         (loop 0 2048 tile_k k
             (store (input K1)
                 (+
-                    (x (load (input K1) (index (fulltile) (tile n))) 1)
+                    (* (load (input K1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
@@ -8190,7 +8190,7 @@ fn extract_expressions() {
         (loop 0 2048 tile_k k
             (store (input V1)
                 (+
-                    (x (load (input V1) (index (fulltile) (tile n))) 1)
+                    (* (load (input V1) (index (fulltile) (tile n))) 1)
                     (*
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
@@ -8294,7 +8294,7 @@ fn extract_expressions() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -8324,7 +8324,7 @@ fn extract_expressions() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
                     (*
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
@@ -8383,7 +8383,7 @@ fn extract_expressions() {
 //         (loop 0 N tile_n n 
 //             (store (input C_sum)
 //                 (+
-//                     (x (load (input C_sum) (index (tile m))) 1)
+//                     (* (load (input C_sum) (index (tile m))) 1)
 //                     (rsum (load (input C_exp) (index (tile m) (tile n))) 1)
 //                 )
 //                 (index (tile m))
@@ -8406,7 +8406,7 @@ fn extract_expressions() {
 //         (loop 0 N tile_n n 
 //             (store (output O)
 //                 (+
-//                     (x (load (output O) (index (tile m) (fulltile))) 1)
+//                     (* (load (output O) (index (tile m) (fulltile))) 1)
 //                     (*
 //                         (load (input C_div) (index (tile m) (tile n)))
 //                         (load (input V) (index (tile n) (fulltile)))
@@ -8462,7 +8462,7 @@ fn postprocess_expression() {
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
@@ -8473,7 +8473,7 @@ fn postprocess_expression() {
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
@@ -8484,7 +8484,7 @@ fn postprocess_expression() {
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
                         (*
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
@@ -8566,7 +8566,7 @@ fn postprocess_expression() {
             (seq
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (elem n) (fulltile))) 1)
+                        (* (load (input C_sum) (index (elem n) (fulltile))) 1)
                         (rsum
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             2
@@ -8576,7 +8576,7 @@ fn postprocess_expression() {
                 )
                 (store (input O)
                     (+
-                        (x (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
+                        (* (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
                         (*
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             (load (input V_cache) (index (elem n) (tile p) (fulltile)))

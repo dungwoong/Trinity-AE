@@ -60,7 +60,7 @@ fn extract_rmsnorm_expressions() {
     (loop 0 4544 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -92,8 +92,8 @@ fn extract_rmsnorm_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor Q1)
                 (+
-                    (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -107,8 +107,8 @@ fn extract_rmsnorm_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor K1)
                 (+
-                    (x (load (tensor K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -121,8 +121,8 @@ fn extract_rmsnorm_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor V1)
                 (+
-                    (x (load (tensor V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -234,7 +234,7 @@ fn extract_qkvattn_expressions() {
     (loop 0 4544 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -266,8 +266,8 @@ fn extract_qkvattn_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor Q1,K1,V1)
                 (+
-                    (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ,WK,WV) (index (tile k) (tile n)))
                     )
@@ -311,7 +311,7 @@ fn extract_qkvattn_expressions() {
     (loop 0 71 tile_h h 
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -336,7 +336,7 @@ fn extract_qkvattn_expressions() {
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -366,8 +366,8 @@ fn extract_qkvattn_expressions() {
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -498,7 +498,7 @@ fn extract_whole_expressions() {
     (loop 0 4544 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -530,8 +530,8 @@ fn extract_whole_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor Q1)
                 (+
-                    (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -545,8 +545,8 @@ fn extract_whole_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor K1)
                 (+
-                    (x (load (tensor K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -560,8 +560,8 @@ fn extract_whole_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor V1)
                 (+
-                    (x (load (tensor V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -639,7 +639,7 @@ fn extract_whole_expressions() {
     (loop 0 71 tile_h h 
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -664,7 +664,7 @@ fn extract_whole_expressions() {
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -694,8 +694,8 @@ fn extract_whole_expressions() {
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -823,7 +823,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
     (loop 0 4544 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -855,8 +855,8 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor Q1,K1,V1)
                 (+
-                    (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ,WK,WV) (index (tile k) (tile n)))
                     )
@@ -900,7 +900,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
     (loop 0 71 tile_h h 
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -925,7 +925,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -955,8 +955,8 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -1080,8 +1080,8 @@ fn extract_ffn_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor attn_O1)
                 (+
-                    (x (load (tensor attn_O1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor attn_O1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input O2) (index (fulltile) (tile k)))
                         (load (input WO) (index (tile k) (tile n)))
                     )
@@ -1104,7 +1104,7 @@ fn extract_ffn_expressions() {
     (loop 0 4544 tile_k k
         (store (tensor attn_O3)
             (+
-                (x (load (tensor attn_O3) (index (fulltile))) 1)
+                (* (load (tensor attn_O3) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (tensor attn_O2) (index (fulltile) (tile k))))
                     1
@@ -1136,8 +1136,8 @@ fn extract_ffn_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor FF1a)
                 (+
-                    (x (load (tensor FF1a) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor FF1a) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
                         (load (input WFF1a) (index (tile k) (tile n)))
                     )
@@ -1151,8 +1151,8 @@ fn extract_ffn_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor FF1b)
                 (+
-                    (x (load (tensor FF1b) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor FF1b) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
                         (load (input WFF1b) (index (tile k) (tile n)))
                     )
@@ -1164,7 +1164,7 @@ fn extract_ffn_expressions() {
 (seq
     (loop 0 4544 tile_n n
         (store (tensor FF1b_silu)
-            (x
+            (*
                 (load (tensor FF1b) (index (fulltile) (tile n)))
                 (sigmoid
                     (load (tensor FF1b) (index (fulltile) (tile n)))
@@ -1176,7 +1176,7 @@ fn extract_ffn_expressions() {
 (seq
     (loop 0 4544 tile_n n
         (store (tensor FF1)
-            (x
+            (*
                 (load (tensor FF1a) (index (fulltile) (tile n)))
                 (load (tensor FF1b_silu) (index (fulltile) (tile n)))
             )
@@ -1188,8 +1188,8 @@ fn extract_ffn_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor FF2)
                 (+
-                    (x (load (tensor FF2) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor FF2) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor FF1) (index (fulltile) (tile k)))
                         (load (input WFF2) (index (tile k) (tile n)))
                     )
@@ -1335,8 +1335,8 @@ fn extract_gatedmlp_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor FF1a)
                 (+
-                    (x (load (tensor FF1a) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor FF1a) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
                         (load (input WFF1a) (index (tile k) (tile n)))
                     )
@@ -1350,8 +1350,8 @@ fn extract_gatedmlp_expressions() {
         (loop 0 4544 tile_k k
             (store (tensor FF1b)
                 (+
-                    (x (load (tensor FF1b) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor FF1b) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
                         (load (input WFF1b) (index (tile k) (tile n)))
                     )
@@ -1363,7 +1363,7 @@ fn extract_gatedmlp_expressions() {
 (seq
     (loop 0 4544 tile_n n
         (store (tensor FF1b_silu)
-            (x
+            (*
                 (load (tensor FF1b) (index (fulltile) (tile n)))
                 (sigmoid
                     (load (tensor FF1b) (index (fulltile) (tile n)))
@@ -1374,7 +1374,7 @@ fn extract_gatedmlp_expressions() {
     )
     (loop 0 4544 tile_n n
         (store (output FF1)
-            (x
+            (*
                 (load (tensor FF1a) (index (fulltile) (tile n)))
                 (load (tensor FF1b_silu) (index (fulltile) (tile n)))
             )
@@ -1453,7 +1453,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
     (loop 0 4544 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -1485,8 +1485,8 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
         (loop 0 4544 tile_k k
             (store (tensor Q1,K1,V1)
                 (+
-                    (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ,WK,WV) (index (tile k) (tile n)))
                     )
@@ -1530,7 +1530,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
     (loop 0 71 tile_h h 
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -1555,7 +1555,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -1585,8 +1585,8 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -1624,7 +1624,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
             (seq
                 (store (tensor X2)
                     (+
-                        (x (load (tensor X2) (index (fulltile))) 1)
+                        (* (load (tensor X2) (index (fulltile))) 1)
                         (rsum
                             (sqr (load (input X) (index (fulltile) (tile k))))
                             1
@@ -1634,8 +1634,8 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
                 )
                 (store (tensor Q1,K1,V1)
                     (+
-                        (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ,WK,WV) (index (tile k) (tile n)))
                         )
@@ -1704,7 +1704,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
     (seq
         (loop 0 528 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (elem n) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (elem n) (tile p) (fulltile)))
@@ -1725,7 +1725,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
         (loop 0 528 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (elem n) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (elem n) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (elem n) (fulltile) (tile p)))
                         2
@@ -1751,8 +1751,8 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
         (loop 0 528 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (elem n) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (elem n) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (elem n) (fulltile) (tile p)))
                         (load (input V_cache) (index (elem n) (tile p) (fulltile)))
                     )
@@ -1786,7 +1786,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
                 (seq
                     (store (tensor X2)
                         (+
-                            (x (load (tensor X2) (index (fulltile))) 1)
+                            (* (load (tensor X2) (index (fulltile))) 1)
                             (rsum
                                 (sqr (load (input X) (index (fulltile) (tile k))))
                                 1
@@ -1796,8 +1796,8 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
                     )
                     (store (tensor Q1,K1,V1)
                         (+
-                            (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                            (*
+                            (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                            (@
                                 (load (input X) (index (fulltile) (tile k)))
                                 (load (input WQ,WK,WV) (index (tile k) (tile n)))
                             )
@@ -1867,7 +1867,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
             (loop 0 528 tile_p p
                 (seq
                     (store (tensor C)
-                        (*
+                        (@
                             (load (tensor Q) (index (elem n) (fulltile) (fulltile)))
                             (permute3
                                 (load (input K_cache) (index (elem n) (tile p) (fulltile)))
@@ -1884,7 +1884,7 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
                 (seq
                     (store (tensor C_sum)
                         (+
-                            (x (load (tensor C_sum) (index (elem n) (fulltile))) 1)
+                            (* (load (tensor C_sum) (index (elem n) (fulltile))) 1)
                             (rsum
                                 (load (tensor C_exp) (index (elem n) (fulltile) (tile p)))
                                 2
@@ -1894,8 +1894,8 @@ egg::test_fn2! {test_rmsnorm_attacc_hacked, rules(),
                     )
                     (store (tensor O)
                         (+
-                            (x (load (tensor O) (index (elem n) (fulltile) (fulltile))) 1)
-                            (*
+                            (* (load (tensor O) (index (elem n) (fulltile) (fulltile))) 1)
+                            (@
                                 (load (tensor C_exp) (index (elem n) (fulltile) (tile p)))
                                 (load (input V_cache) (index (elem n) (tile p) (fulltile)))
                             )

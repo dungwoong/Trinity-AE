@@ -63,7 +63,7 @@ fn extract_attn_only() {
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -88,7 +88,7 @@ fn extract_attn_only() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -117,8 +117,8 @@ fn extract_attn_only() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -238,7 +238,7 @@ fn extract_attn_concat_only() {
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -263,7 +263,7 @@ fn extract_attn_concat_only() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -292,8 +292,8 @@ fn extract_attn_concat_only() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -404,7 +404,7 @@ fn extract_attn_concat_permute_only() {
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -429,7 +429,7 @@ fn extract_attn_concat_permute_only() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -458,8 +458,8 @@ fn extract_attn_concat_permute_only() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -589,7 +589,7 @@ fn extract_attn_concat_permute_unsqueeze_only() {
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (input C)
-                (*
+                (@
                     (load (input Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -614,7 +614,7 @@ fn extract_attn_concat_permute_unsqueeze_only() {
         (loop 0 2064 tile_p p
             (store (input C_sum)
                 (+
-                    (x (load (input C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (input C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (input C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -643,8 +643,8 @@ fn extract_attn_concat_permute_unsqueeze_only() {
         (loop 0 2064 tile_p p
             (store (input O)
                 (+
-                    (x (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (input O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (input C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -707,7 +707,7 @@ fn extract_lora() {
         (loop 0 P tile_p p 
             (loop 0 N tile_n n
                 (store (tensor C)
-                    (+ (x (load (tensor C) (index (fulltile) (tile p))) 1)
+                    (+ (* (load (tensor C) (index (fulltile) (tile p))) 1)
                     (* (load (input X) (index (fulltile) (tile n))) (load (input W) (index (tile n) (tile p)))
                     ))
                     (index (fulltile) (tile p))
@@ -717,7 +717,7 @@ fn extract_lora() {
     (seq
         (loop 0 N tile_n n
             (store (tensor D)
-                (+ (x (load (tensor D) (index (fulltile) (fulltile))) 1)
+                (+ (* (load (tensor D) (index (fulltile) (fulltile))) 1)
                 (* (load (input X) (index (fulltile) (tile n))) (load (input A) (index (tile n) (fulltile)))
                 ))
                 (index (fulltile) (fulltile))
@@ -802,8 +802,8 @@ fn extract_gated_mlp_skip_ft() {
             (loop 0 K tile_k k 
                 (store (tensor C1) 
                     (+
-                        (x (load (tensor C1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor C1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W1) (index (tile k) (tile n)))
                         )
@@ -828,8 +828,8 @@ fn extract_gated_mlp_skip_ft() {
             (loop 0 K tile_k k 
                 (store (tensor C2) 
                     (+
-                        (x (load (tensor C2) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor C2) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input W2) (index (tile k) (tile n)))
                         )
@@ -840,7 +840,7 @@ fn extract_gated_mlp_skip_ft() {
         )
         (loop 0 N tile_n n 
             (store (output O) 
-                (x
+                (*
                     (load (tensor C1_exp) (index (fulltile) (tile n)))
                     (load (tensor C2) (index (fulltile) (tile n)))
                 )
@@ -936,8 +936,8 @@ fn extract_expressions() {
         (loop 0 2048 tile_k k
             (store (tensor Q1)
                 (+
-                    (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WQ) (index (tile k) (tile n)))
                     )
@@ -951,8 +951,8 @@ fn extract_expressions() {
         (loop 0 2048 tile_k k
             (store (tensor K1)
                 (+
-                    (x (load (tensor K1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor K1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WK) (index (tile k) (tile n)))
                     )
@@ -966,8 +966,8 @@ fn extract_expressions() {
         (loop 0 2048 tile_k k
             (store (tensor V1)
                 (+
-                    (x (load (tensor V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input X) (index (fulltile) (tile k)))
                         (load (input WV) (index (tile k) (tile n)))
                     )
@@ -1045,7 +1045,7 @@ fn extract_expressions() {
     (loop 0 32 tile_h h 
         (loop 0 2064 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -1070,7 +1070,7 @@ fn extract_expressions() {
         (loop 0 2064 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -1100,8 +1100,8 @@ fn extract_expressions() {
         (loop 0 2064 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -1214,7 +1214,7 @@ fn extract_rms_norm() {
             )
             (store (tensor X2)
                 (+
-                    (x (load (tensor X2) (index (fulltile))) 1)
+                    (* (load (tensor X2) (index (fulltile))) 1)
                     (rsum
                         (load (tensor X1) (index (fulltile) (tile k)))
                         1
@@ -1245,8 +1245,8 @@ fn extract_rms_norm() {
             (seq
                 (store (tensor Q1)
                     (+
-                        (x (load (tensor Q1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor Q1) (index (fulltile) (tile n))) 1)
+                        (@
                             (/
                                 (load (input X) (index (fulltile) (tile k)))
                                 (bcast
@@ -1267,8 +1267,8 @@ fn extract_rms_norm() {
             (seq
                 (store (tensor K1)
                     (+
-                        (x (load (tensor K1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor K1) (index (fulltile) (tile n))) 1)
+                        (@
                             (/
                                 (load (input X) (index (fulltile) (tile k)))
                                 (bcast
@@ -1288,8 +1288,8 @@ fn extract_rms_norm() {
                 )
                 (store (tensor V1)
                     (+
-                        (x (load (tensor V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (tensor V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (/
                                 (load (input X) (index (fulltile) (tile k)))
                                 (bcast
@@ -1382,7 +1382,7 @@ fn postprocess_expression() {
             (loop 0 N tile_n n
                 (seq
                     (store (input C) 
-                        (*
+                        (@
                             (load (input Q) (index (tile m) (fulltile)))
                             (load (input K) (index (fulltile) (tile n)))
                         )
@@ -1398,7 +1398,7 @@ fn postprocess_expression() {
                 (seq
                     (store (input C_sum)
                         (+
-                            (x (load (input C_sum) (index (tile m))) 1)
+                            (* (load (input C_sum) (index (tile m))) 1)
                             (rsum 
                                 (load (input C_exp) (index (tile m) (tile n)))
                                 1
@@ -1408,8 +1408,8 @@ fn postprocess_expression() {
                     )
                     (store (output O)
                         (+
-                            (x (load (output O) (index (tile m) (fulltile))) 1)
-                            (*
+                            (* (load (output O) (index (tile m) (fulltile))) 1)
+                            (@
                                 (load (input C_exp) (index (tile m) (tile n)))
                                 (load (input V) (index (tile n) (fulltile)))
                             )
@@ -1455,8 +1455,8 @@ fn postprocess_expression() {
             (seq
                 (store (input Q1)
                     (+
-                        (x (load (input Q1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input Q1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WQ) (index (tile k) (tile n)))
                         )
@@ -1466,8 +1466,8 @@ fn postprocess_expression() {
             (seq
                 (store (input K1)
                     (+
-                        (x (load (input K1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input K1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WK) (index (tile k) (tile n)))
                         )
@@ -1477,8 +1477,8 @@ fn postprocess_expression() {
 
                 (store (input V1)
                     (+
-                        (x (load (input V1) (index (fulltile) (tile n))) 1)
-                        (*
+                        (* (load (input V1) (index (fulltile) (tile n))) 1)
+                        (@
                             (load (input X) (index (fulltile) (tile k)))
                             (load (input WV) (index (tile k) (tile n)))
                         )
@@ -1542,7 +1542,7 @@ fn postprocess_expression() {
         (loop 0 2064 tile_p p
             (seq
                 (store (input C)
-                    (*
+                    (@
                         (load (input Q) (index (elem n) (fulltile) (fulltile)))
                         (permute3
                             (load (input K_cache) (index (elem n) (tile p) (fulltile)))
@@ -1559,7 +1559,7 @@ fn postprocess_expression() {
             (seq
                 (store (input C_sum)
                     (+
-                        (x (load (input C_sum) (index (elem n) (fulltile))) 1)
+                        (* (load (input C_sum) (index (elem n) (fulltile))) 1)
                         (rsum
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             2
@@ -1569,8 +1569,8 @@ fn postprocess_expression() {
                 )
                 (store (input O)
                     (+
-                        (x (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
-                        (*
+                        (* (load (input O) (index (elem n) (fulltile) (fulltile))) 1)
+                        (@
                             (load (input C_exp) (index (elem n) (fulltile) (tile p)))
                             (load (input V_cache) (index (elem n) (tile p) (fulltile)))
                         )
@@ -1628,7 +1628,7 @@ fn postprocess_expression() {
     )))))))))))))
 )
 ";
-    let expr = "(loop 0 2048 64 n (seq (loop 0 2048 tile_k k (seq (store (tensor K1) (+ (x 1 (load (tensor K1) (index fulltile (tile n)))) (* (load (input X) (index fulltile (tile k))) (load (input WK) (index (tile k) (tile n))))) (index fulltile (tile n))) (seq (store (tensor V1) (+ (x 1 (load (tensor V1) (index fulltile (tile n)))) (* (load (input X) (index fulltile (tile k))) (load (input WV) (index (tile k) (tile n))))) (index fulltile (tile n))) (store (tensor Q1) (+ (x (load (tensor Q1) (index fulltile (tile n))) 1) (* (load (input X) (index fulltile (tile k))) (load (input WQ) (index (tile k) (tile n))))) (index fulltile (tile n)))))) (seq (store (tensor Q2) (unsqueeze (load (tensor Q1) (index fulltile (tile n))) 1) (index fulltile (tile h) fulltile)) (seq (store (tensor K2) (unsqueeze (load (tensor K1) (index fulltile (tile n))) 1) (index fulltile (tile h) fulltile)) (seq (store (tensor V2) (unsqueeze (load (tensor V1) (index fulltile (tile n))) 1) (index fulltile (tile h) fulltile)) (seq (store (tensor Q) (permute3 (load (tensor Q2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (tensor K) (permute3 (load (tensor K2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (tensor V) (permute3 (load (tensor V2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (input K_cache) (permute3 (load (tensor K2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (input V_cache) (permute3 (load (tensor V2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (loop 0 2064 tile_p p (seq (store (tensor C) (* (load (tensor Q) (index (tile h) fulltile fulltile)) (permute3 (load (input K_cache) (index (tile h) (tile p) fulltile)) 0 2 1)) (index (tile h) fulltile (tile p))) (seq (store (tensor C_exp) (exp (load (tensor C) (index (tile h) fulltile (tile p)))) (index (tile h) fulltile (tile p))) (seq (store (tensor C_sum) (+ (x 1 (load (tensor C_sum) (index (tile h) fulltile))) (rsum (load (tensor C_exp) (index (tile h) fulltile (tile p))) 2)) (index (tile h) fulltile)) (store (tensor O) (+ (x 1 (load (tensor O) (index (tile h) fulltile fulltile))) (* (load (tensor C_exp) (index (tile h) fulltile (tile p))) (load (input V_cache) (index (tile h) (tile p) fulltile)))) (index (tile h) fulltile fulltile)))))) (seq (loop 0 2064 tile_p p (store (tensor C_div) (/ (load (tensor C_exp) (index (tile h) fulltile (tile p))) (bcast (load (tensor C_sum) (index (tile h) fulltile)) 2)) (index (tile h) fulltile (tile p)))) (seq (store (tensor O) (/ (load (tensor O) (index (tile h) fulltile fulltile)) (bcast (load (tensor C_sum) (index (tile h) fulltile)) 2)) (index (tile h) fulltile fulltile)) (seq (store (tensor O1) (permute3 (load (tensor O) (index (tile h) fulltile fulltile)) 1 0 2) (index fulltile (tile h) fulltile)) (store (output O2) (squeeze (load (tensor O1) (index fulltile (tile h) fulltile)) 1) (index fulltile (tile n)))))))))))))))))";
+    let expr = "(loop 0 2048 64 n (seq (loop 0 2048 tile_k k (seq (store (tensor K1) (+ (* 1 (load (tensor K1) (index fulltile (tile n)))) (* (load (input X) (index fulltile (tile k))) (load (input WK) (index (tile k) (tile n))))) (index fulltile (tile n))) (seq (store (tensor V1) (+ (* 1 (load (tensor V1) (index fulltile (tile n)))) (* (load (input X) (index fulltile (tile k))) (load (input WV) (index (tile k) (tile n))))) (index fulltile (tile n))) (store (tensor Q1) (+ (* (load (tensor Q1) (index fulltile (tile n))) 1) (* (load (input X) (index fulltile (tile k))) (load (input WQ) (index (tile k) (tile n))))) (index fulltile (tile n)))))) (seq (store (tensor Q2) (unsqueeze (load (tensor Q1) (index fulltile (tile n))) 1) (index fulltile (tile h) fulltile)) (seq (store (tensor K2) (unsqueeze (load (tensor K1) (index fulltile (tile n))) 1) (index fulltile (tile h) fulltile)) (seq (store (tensor V2) (unsqueeze (load (tensor V1) (index fulltile (tile n))) 1) (index fulltile (tile h) fulltile)) (seq (store (tensor Q) (permute3 (load (tensor Q2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (tensor K) (permute3 (load (tensor K2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (tensor V) (permute3 (load (tensor V2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (input K_cache) (permute3 (load (tensor K2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (store (input V_cache) (permute3 (load (tensor V2) (index fulltile (tile h) fulltile)) 1 0 2) (index (tile h) fulltile fulltile)) (seq (loop 0 2064 tile_p p (seq (store (tensor C) (* (load (tensor Q) (index (tile h) fulltile fulltile)) (permute3 (load (input K_cache) (index (tile h) (tile p) fulltile)) 0 2 1)) (index (tile h) fulltile (tile p))) (seq (store (tensor C_exp) (exp (load (tensor C) (index (tile h) fulltile (tile p)))) (index (tile h) fulltile (tile p))) (seq (store (tensor C_sum) (+ (* 1 (load (tensor C_sum) (index (tile h) fulltile))) (rsum (load (tensor C_exp) (index (tile h) fulltile (tile p))) 2)) (index (tile h) fulltile)) (store (tensor O) (+ (* 1 (load (tensor O) (index (tile h) fulltile fulltile))) (* (load (tensor C_exp) (index (tile h) fulltile (tile p))) (load (input V_cache) (index (tile h) (tile p) fulltile)))) (index (tile h) fulltile fulltile)))))) (seq (loop 0 2064 tile_p p (store (tensor C_div) (/ (load (tensor C_exp) (index (tile h) fulltile (tile p))) (bcast (load (tensor C_sum) (index (tile h) fulltile)) 2)) (index (tile h) fulltile (tile p)))) (seq (store (tensor O) (/ (load (tensor O) (index (tile h) fulltile fulltile)) (bcast (load (tensor C_sum) (index (tile h) fulltile)) 2)) (index (tile h) fulltile fulltile)) (seq (store (tensor O1) (permute3 (load (tensor O) (index (tile h) fulltile fulltile)) 1 0 2) (index fulltile (tile h) fulltile)) (store (output O2) (squeeze (load (tensor O1) (index fulltile (tile h) fulltile)) 1) (index fulltile (tile n)))))))))))))))))";
 
     let new_expr = postprocess(expr);
     println!("{}", new_expr);

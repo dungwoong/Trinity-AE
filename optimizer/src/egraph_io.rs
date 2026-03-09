@@ -102,13 +102,13 @@ fn format_node_with_ids(_egraph: &EGraph<TileLang, LoopAnalysis>, node: &TileLan
             Const(_) => "const",
             Add(_) => "+",
             Sub(_) => "-",
-            Mul(_) => "x",
+            Mul(_) => "*",
             Div(_) => "/",
             Le(_) => "<=",
             Max(_) => "max",
             Min(_) => "min",
             Exp(_) => "exp",
-            Matmul(_) => "*",
+            Matmul(_) => "@",
             ReduceSum(_) => "rsum",
             ReduceMin(_) => "rmin",
             ReduceMax(_) => "rmax",
@@ -340,8 +340,8 @@ fn parse_node(
             "store" if child_ids.len() >= 3 => Store([child_ids[0], child_ids[1], child_ids[2]]),
             "load" if child_ids.len() >= 2 => Load([child_ids[0], child_ids[1]]),
             "+" if child_ids.len() >= 2 => Add([child_ids[0], child_ids[1]]),
-            "x" if child_ids.len() >= 2 => Mul([child_ids[0], child_ids[1]]),
-            "*" if child_ids.len() >= 2 => Matmul([child_ids[0], child_ids[1]]),
+            "*" if child_ids.len() >= 2 => Mul([child_ids[0], child_ids[1]]),
+            "@" if child_ids.len() >= 2 => Matmul([child_ids[0], child_ids[1]]),
             "index" => {
                 // index takes a Box<[Id]>
                 Index(child_ids.clone().into_boxed_slice())

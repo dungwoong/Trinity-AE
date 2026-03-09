@@ -62,7 +62,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
     (loop 0 4096 tile_k k
         (store (tensor X2)
             (+
-                (x (load (tensor X2) (index (fulltile))) 1)
+                (* (load (tensor X2) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (input X) (index (fulltile) (tile k))))
                     1
@@ -94,8 +94,8 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor Q1,K1,V1)
                 (+
-                    (x (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor Q1,K1,V1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor X_norm) (index (fulltile) (tile k)))
                         (load (input WQ,WK,WV) (index (tile k) (tile n)))
                     )
@@ -139,7 +139,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
     (loop 0 32 tile_h h 
         (loop 0 1040 tile_p p
             (store (tensor C)
-                (*
+                (@
                     (load (tensor Q) (index (tile h) (fulltile) (fulltile)))
                     (permute3
                         (load (input K_cache) (index (tile h) (tile p) (fulltile)))
@@ -164,7 +164,7 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         (loop 0 1040 tile_p p
             (store (tensor C_sum)
                 (+
-                    (x (load (tensor C_sum) (index (tile h) (fulltile))) 1)
+                    (* (load (tensor C_sum) (index (tile h) (fulltile))) 1)
                     (rsum
                         (load (tensor C_exp) (index (tile h) (fulltile) (tile p)))
                         2
@@ -194,8 +194,8 @@ fn extract_rmsnorm_qkv_attn_expressions() {
         (loop 0 1040 tile_p p
             (store (tensor O)
                 (+
-                    (x (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
-                    (*
+                    (* (load (tensor O) (index (tile h) (fulltile) (fulltile))) 1)
+                    (@
                         (load (tensor C_div) (index (tile h) (fulltile) (tile p)))
                         (load (input V_cache) (index (tile h) (tile p) (fulltile)))
                     )
@@ -292,8 +292,8 @@ fn extract_ffn_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor attn_O1)
                 (+
-                    (x (load (tensor attn_O1) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (tensor attn_O1) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (input O2) (index (fulltile) (tile k)))
                         (load (input WO) (index (tile k) (tile n)))
                     )
@@ -316,7 +316,7 @@ fn extract_ffn_expressions() {
     (loop 0 4096 tile_k k
         (store (tensor attn_O3)
             (+
-                (x (load (tensor attn_O3) (index (fulltile))) 1)
+                (* (load (tensor attn_O3) (index (fulltile))) 1)
                 (rsum
                     (sqr (load (tensor attn_O2) (index (fulltile) (tile k))))
                     1
@@ -348,8 +348,8 @@ fn extract_ffn_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor FF1a)
                 (+
-                    (x (load (tensor FF1a) (index (fulltile) (tile p))) 1)
-                    (*
+                    (* (load (tensor FF1a) (index (fulltile) (tile p))) 1)
+                    (@
                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
                         (load (input WFF1a) (index (tile k) (tile p)))
                     )
@@ -363,8 +363,8 @@ fn extract_ffn_expressions() {
         (loop 0 4096 tile_k k
             (store (tensor FF1b)
                 (+
-                    (x (load (tensor FF1b) (index (fulltile) (tile p))) 1)
-                    (*
+                    (* (load (tensor FF1b) (index (fulltile) (tile p))) 1)
+                    (@
                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
                         (load (input WFF1b) (index (tile k) (tile p)))
                     )
@@ -376,7 +376,7 @@ fn extract_ffn_expressions() {
 (seq
     (loop 0 14336 tile_p p
         (store (tensor FF1b_silu)
-            (x
+            (*
                 (load (tensor FF1b) (index (fulltile) (tile p)))
                 (sigmoid
                     (load (tensor FF1b) (index (fulltile) (tile p)))
@@ -388,7 +388,7 @@ fn extract_ffn_expressions() {
 (seq
     (loop 0 14336 tile_p p
         (store (tensor FF1)
-            (x
+            (*
                 (load (tensor FF1a) (index (fulltile) (tile p)))
                 (load (tensor FF1b_silu) (index (fulltile) (tile p)))
             )
@@ -399,8 +399,8 @@ fn extract_ffn_expressions() {
         (loop 0 14336 tile_p p
             (store (output FF2)
                 (+
-                    (x (load (output FF2) (index (fulltile) (tile n))) 1)
-                    (*
+                    (* (load (output FF2) (index (fulltile) (tile n))) 1)
+                    (@
                         (load (tensor FF1) (index (fulltile) (tile p)))
                         (load (input WFF2) (index (tile p) (tile n)))
                     )
@@ -462,8 +462,8 @@ fn extract_ffn_expressions() {
 //         (loop 0 4096 tile_k k
 //             (store (tensor attn_O1)
 //                 (+
-//                     (x (load (tensor attn_O1) (index (fulltile) (tile n))) 1)
-//                     (*
+//                     (* (load (tensor attn_O1) (index (fulltile) (tile n))) 1)
+//                     (@
 //                         (load (input O2) (index (fulltile) (tile k)))
 //                         (load (input WO) (index (tile k) (tile n)))
 //                     )
@@ -486,7 +486,7 @@ fn extract_ffn_expressions() {
 //     (loop 0 4096 tile_k k
 //         (store (tensor attn_O3)
 //             (+
-//                 (x (load (tensor attn_O3) (index (fulltile))) 1)
+//                 (* (load (tensor attn_O3) (index (fulltile))) 1)
 //                 (rsum
 //                     (sqr (load (tensor attn_O2) (index (fulltile) (tile k))))
 //                     1
@@ -518,8 +518,8 @@ fn extract_ffn_expressions() {
 //         (loop 0 4096 tile_k k
 //             (store (tensor FF1a)
 //                 (+
-//                     (x (load (tensor FF1a) (index (fulltile) (tile p))) 1)
-//                     (*
+//                     (* (load (tensor FF1a) (index (fulltile) (tile p))) 1)
+//                     (@
 //                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
 //                         (load (input WFF1a) (index (tile k) (tile p)))
 //                     )
@@ -533,8 +533,8 @@ fn extract_ffn_expressions() {
 //         (loop 0 4096 tile_k k
 //             (store (tensor FF1b)
 //                 (+
-//                     (x (load (tensor FF1b) (index (fulltile) (tile p))) 1)
-//                     (*
+//                     (* (load (tensor FF1b) (index (fulltile) (tile p))) 1)
+//                     (@
 //                         (load (tensor attn_O_norm) (index (fulltile) (tile k)))
 //                         (load (input WFF1b) (index (tile k) (tile p)))
 //                     )
@@ -546,7 +546,7 @@ fn extract_ffn_expressions() {
 // (seq
 //     (loop 0 14336 tile_p p
 //         (store (tensor FF1b_silu)
-//             (x
+//             (*
 //                 (load (tensor FF1b) (index (fulltile) (tile p)))
 //                 (sigmoid
 //                     (load (tensor FF1b) (index (fulltile) (tile p)))
@@ -558,7 +558,7 @@ fn extract_ffn_expressions() {
 // (seq
 //     (loop 0 14336 tile_p p
 //         (store (tensor FF1)
-//             (x
+//             (*
 //                 (load (tensor FF1a) (index (fulltile) (tile p)))
 //                 (load (tensor FF1b_silu) (index (fulltile) (tile p)))
 //             )
@@ -570,8 +570,8 @@ fn extract_ffn_expressions() {
 //         (loop 0 14336 tile_p p
 //             (store (output FF2)
 //                 (+
-//                     (x (load (output FF2) (index (fulltile) (tile n))) 1)
-//                     (*
+//                     (* (load (output FF2) (index (fulltile) (tile n))) 1)
+//                     (@
 //                         (load (tensor FF1) (index (fulltile) (tile p)))
 //                         (load (input WFF2) (index (tile p) (tile n)))
 //                     )
@@ -600,12 +600,12 @@ fn extract_ffn_expressions() {
 //                 (store
 //                     (tensor attn_O1)
 //                     (+
-//                         (x
+//                         (*
 //                             (load
 //                                 (tensor attn_O1)
 //                                 (index fulltile
 //                                     (tile n))) 1)
-//                         (*
+//                         (@
 //                             (load
 //                                 (input O2)
 //                                 (index fulltile
@@ -638,7 +638,7 @@ fn extract_ffn_expressions() {
 //                         (store
 //                             (tensor attn_O3)
 //                             (+
-//                                 (x
+//                                 (*
 //                                     (load
 //                                         (tensor attn_O3)
 //                                         (index fulltile)) 1)
@@ -653,12 +653,12 @@ fn extract_ffn_expressions() {
 //                             (store
 //                                 (tensor FF1a)
 //                                 (+
-//                                     (x
+//                                     (*
 //                                         (load
 //                                             (tensor FF1a)
 //                                             (index fulltile
 //                                                 (tile p))) 1)
-//                                     (*
+//                                     (@
 //                                         (load
 //                                             (tensor attn_O2)
 //                                             (index fulltile
@@ -673,7 +673,7 @@ fn extract_ffn_expressions() {
 //                             (store
 //                                 (tensor FF1b)
 //                                 (+
-//                                     (*
+//                                     (@
 //                                         (load
 //                                             (tensor attn_O2)
 //                                             (index fulltile
@@ -683,7 +683,7 @@ fn extract_ffn_expressions() {
 //                                             (index
 //                                                 (tile k)
 //                                                 (tile p))))
-//                                     (x
+//                                     (*
 //                                         (load
 //                                             (tensor FF1b)
 //                                             (index fulltile
@@ -724,7 +724,7 @@ fn extract_ffn_expressions() {
 //                                 (tile p)))
 //                         (seq
 //                         (store (tensor FF1b_silu)
-//                                 (x
+//                                 (*
 //                                     (load (tensor FF1b) (index (fulltile) (tile p)))
 //                                     (sigmoid
 //                                         (load (tensor FF1b) (index (fulltile) (tile p)))
@@ -734,12 +734,12 @@ fn extract_ffn_expressions() {
 //                             )
 //                             (store
 //                                 (tensor FF1)
-//                                 (x
+//                                 (*
 //                                     (load
 //                                         (tensor FF1a)
 //                                         (index fulltile
 //                                             (tile p)))
-//                                     (x
+//                                     (*
 //                                         (load
 //                                             (tensor FF1b)
 //                                             (index fulltile
@@ -775,12 +775,12 @@ fn extract_ffn_expressions() {
 //                             (store
 //                                 (output FF2)
 //                                 (+
-//                                     (x 1
+//                                     (* 1
 //                                         (load
 //                                             (output FF2)
 //                                             (index fulltile
 //                                                 (tile n))))
-//                                     (*
+//                                     (@
 //                                         (load
 //                                             (tensor FF1)
 //                                             (index fulltile
