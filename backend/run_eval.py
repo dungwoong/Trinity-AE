@@ -1,15 +1,14 @@
 from codegen.convert_module import convert_ir_to_triton
-import argparse, torch, importlib.util, sys
-from baselines import device, dtype
+import argparse, torch, importlib.util, sys, json
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--o", type=int, default=0, help="0 only convert, 1 only test, 2 both convert and test")
+    parser.add_argument("--o", type=int, default=2, help="0 only convert, 1 only test, 2 both convert and test")
     parser.add_argument("--m", type=str, default="llama", help="Input model type")
     parser.add_argument("--t", type=str, default="vanilla", help="Benchmark type")
     parser.add_argument("--n", type=int, default=0, help="Case number for IR")
+    parser.add_argument("--d", type=int, default=0, help="Type device number")
     parser.add_argument("--baseline", nargs="*", default=[], help="List of baselines")
-    parser.add_argument("--use_graph", action="store_true")
     parser.add_argument("--print_output", action="store_true")
     args = parser.parse_args()
 
@@ -18,49 +17,40 @@ def main():
     model = args.m
     target = args.t
     baseline = args.baseline
-    use_graph = args.use_graph
     print_output = args.print_output
+    
+    device = torch.device(f'cuda:{args.d}' if torch.cuda.is_available() else 'cpu')
+    torch.cuda.set_device(device)
+    dtype = torch.float16
 
     case_file = f"./results/{target}/{target}_{model}_case{num}.txt"
     output_file = f"./results/{target}/{target}_{model}_benchmark{num}.py"
     module_name = f"{target}_{model}_best"
 
-    # output_file = "./evaluation/manual/manual_llama_benchmark1.py"
+    # Load model config from JSON
+    with open('./model_configs.json', 'r') as f:
+        model_configs = json.load(f)
 
-    if model == 'falcon':
-        M = 16
-        D = 64
-        N = 4544
-        P = 1024 - M
-        H = 71
-        N4 = 4*N
-        num_group = 4
+    if model not in model_configs:
+        raise ValueError(f"Unknown model: {model}. Available: {list(model_configs.keys())}")
 
-        constants = {
-            'M': M,
-            'D': D,
-            'N': N,
-            'P': P,
-            'H': H,
-            'N4': N4,
-        }
-    elif model == 'llama':
-        M = 16
-        D = 128
-        N = 4096
-        P = 1024 - M
-        H = 32
-        N4 = N*4
-        num_group = 4
+    config = model_configs[model]
+    M = config['M']
+    D = config['D']
+    N = config['N']
+    P = config['P'] - M
+    H = config['H']
+    N4 = config['N4']
+    num_group = config.get('num_group', 4)
 
-        constants = {
-            'M': M,
-            'D': D,
-            'N': N,
-            'P': P,
-            'H': H,
-            'N4': N4,
-        }
+    constants = {
+        'M': M,
+        'D': D,
+        'N': N,
+        'P': P,
+        'H': H,
+        'N4': N4,
+    }
     
     tensor_shapes = {
         'X': ('M', 'N'),
@@ -134,9 +124,6 @@ def main():
     WK = torch.randn((N, N), device=device, dtype=dtype) * std
     WV = torch.randn((N, N), device=device, dtype=dtype) * std
 
-    WK_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
-    WV_gqa = torch.randn((N, N//num_group), device=device, dtype=dtype) * std
-
     K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
     V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
 
@@ -146,14 +133,14 @@ def main():
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
     # --------------- Additional init for RoCo ---------------------
-    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32) * std
+    C_exp = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
     C_out1 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
     C_out2 = torch.zeros((H, P+M), device=device, dtype=dtype) * std
 
     # --------------- Additional init for KeyFormer ---------------------
-    C = torch.zeros((H, M, P+M), device=device, dtype=dtype) * std
-    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32) * std
-    C_out = torch.zeros((H, P+M), device=device, dtype=dtype) * std
+    C = torch.zeros((H, M, P+M), device=device, dtype=dtype)
+    C_exp_perturb = torch.zeros((H, M, P+M), device=device, dtype=torch.float32)
+    C_out = torch.zeros((H, P+M), device=device, dtype=dtype)
     noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
 
     # --------------- Init for FFN ---------------------
@@ -171,55 +158,70 @@ def main():
     attn_O2 = torch.zeros(M, N, dtype=dtype, device=device)
 
 
+
     out = O2.clone()
     ITER = 1000
+
+    # Initialize timing variables
+    trinity_time = None
+    tensorrt_time = None
+    torcheager_time = None
+    inductor_time = None
+    flashinfer_time = None
+    flashtensor_time = None
+
+    if option == 0:
+        with open(case_file, "r") as f:
+            ir = f.read().strip()
+            triton_code = convert_ir_to_triton(ir, tensor_shapes, constants)
+
+            with open(output_file, "w") as f:
+                f.write(triton_code)
+            
+            print("="*50)
+            print("Triton kernel generated successfully!")
+        return
 
     match target:
         case "vanilla":
             from baselines import Vanilla, TensorRT_Vanilla, FlashInfer_Vanilla
-            trt = TensorRT_Vanilla(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
-            ti = Vanilla(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
-            fi = FlashInfer_Vanilla(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
+            trt = TensorRT_Vanilla(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV, device, dtype)
+            ti = Vanilla(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV, device, dtype)
+            fi = FlashInfer_Vanilla(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV, device, dtype)
             from flashtensor.h100_vanilla import bench_vanilla
             ft = bench_vanilla
         case "prenorm":
             from baselines import PreNorm, TensorRT_PreNorm, FlashInfer_PreNorm
-            trt = TensorRT_PreNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
-            ti = PreNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
-            fi = FlashInfer_PreNorm(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
+            trt = TensorRT_PreNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV, device, dtype)
+            ti = PreNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV, device, dtype)
+            fi = None
             from flashtensor.h100_prenorm import bench_prenorm
             ft = bench_prenorm
         case "keyformer":
             from baselines import KeyFormer, TensorRT_KeyFormer
-            trt = TensorRT_KeyFormer(M, N, D, H, K_cache.clone(), V_cache.clone(), P, noise, WQ, WK, WV)
-            ti = KeyFormer(M, N, D, P, noise, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
+            trt = TensorRT_KeyFormer(M, N, D, H, K_cache.clone(), V_cache.clone(), P, noise, WQ, WK, WV, device, dtype)
+            ti = KeyFormer(M, N, D, P, noise, K_cache.clone(), V_cache.clone(), WQ, WK, WV, device, dtype)
             fi = None
             from flashtensor.h100_kf import bench_kf
             ft = bench_kf
         case "qknorm":
             from baselines import QKNorm, TensorRT_QKNorm, FlashInfer_QKNorm
-            trt = TensorRT_QKNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
-            ti = QKNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
-            fi = FlashInfer_QKNorm(M, N, D, P, K_cache_flashinfer.clone(), V_cache_flashinfer.clone(), WQ, WK, WV)
+            trt = TensorRT_QKNorm(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV, device, dtype)
+            ti = QKNorm(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV, device, dtype)
+            fi = None
             from flashtensor.h100_qknorm import bench_qknorm
             ft = bench_qknorm
         case "roco":
             from baselines import RoCo, TensorRT_RoCo, FlashInfer_RoCo
-            trt = TensorRT_RoCo(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV)
-            ti = RoCo(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV)
+            trt = TensorRT_RoCo(M, N, D, H, K_cache.clone(), V_cache.clone(), P, WQ, WK, WV, device, dtype)
+            ti = RoCo(M, N, D, P, K_cache.clone(), V_cache.clone(), WQ, WK, WV, device, dtype)
             fi = None
             from flashtensor.h100_roco import bench_roco
             ft = bench_roco
-        case "gqa":
-            from baselines import Vanilla_GQA, TensorRT_Vanilla_GQA
-            trt = TensorRT_Vanilla_GQA(M, N, D, H, N//num_group, K_cache.clone(), V_cache.clone(), P, WQ, WK_gqa, WV_gqa)
-            ti = Vanilla_GQA(M, N, D, P, N//num_group, K_cache.clone(), V_cache.clone(), WQ, WK_gqa, WV_gqa)
-            fi = None
-            ft = None
         case "ffn":
             from baselines import FFN, TensorRT_FFN
-            trt = TensorRT_FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2)
-            ti = FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2)
+            trt = TensorRT_FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2, device=device, dtype=dtype)
+            ti = FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2, device=device, dtype=dtype)
             fi = None
             ft = None
 
@@ -246,7 +248,6 @@ def main():
         sys.modules[module_name] = module
         spec.loader.exec_module(module)
         forward = getattr(module, "forward")
-        # forward = getattr(module, "forward_m1_padded")
 
         tensor_params = getattr(module, 'TENSOR_PARAMS')
         block_params = getattr(module, 'BLOCK_PARAMS')
@@ -275,45 +276,19 @@ def main():
             else:
                 raise ValueError(f"Unknown block parameter: {param}")
 
-        if use_graph:
-            stream = torch.cuda.Stream(device)
-            with torch.cuda.stream(stream):
-                for _ in range(10):
-                    forward(*args)
-            stream.synchronize()
-
-            graph = torch.cuda.CUDAGraph()
-            with torch.cuda.stream(stream):
-                with torch.cuda.graph(graph, stream=stream):
-                    forward(*args)
-            stream.synchronize()
-
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            with torch.cuda.stream(stream):
-                start_event.record()
-                for _ in range(ITER):
-                    graph.replay()
-                end_event.record()
-            stream.synchronize()
-
-            time = start_event.elapsed_time(end_event) / ITER
-            print(f"Trinity with CUDA Graph: {time} ms")
-        else:
-            for _ in range(10):
-                forward(*args)
-            
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            for _ in range(ITER):
-                forward(*args)
-            end_event.record()
-            torch.cuda.synchronize()
-
-            time = start_event.elapsed_time(end_event) / ITER
-            print(f"Trinity without CUDA Graph: {time} ms")
+        for _ in range(10):
+            forward(*args)
         
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for _ in range(ITER):
+            forward(*args)
+        end_event.record()
+        torch.cuda.synchronize()
+
+        trinity_time = start_event.elapsed_time(end_event) / ITER
+
         if print_output:
             print(O2)
 
@@ -328,25 +303,22 @@ def main():
             inputs = (X,)
 
         trt.half()
-        if use_graph:
-            print(f"TensorRT with CUDA Graph: 0 ms")
-        else:
-            with torch.no_grad():
-                for _ in range(10):
-                    out = trt(*inputs)
-                torch.cuda.synchronize()
-
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record()
-                for _ in range(ITER):
-                    _ = trt(*inputs)
-                end_event.record()
-                torch.cuda.synchronize()
-
-                time = start_event.elapsed_time(end_event) / ITER
-                print(f"TensorRT without CUDA Graph: {time} ms")
         
+        with torch.no_grad():
+            for _ in range(10):
+                out = trt(*inputs)
+            torch.cuda.synchronize()
+
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            for _ in range(ITER):
+                _ = trt(*inputs)
+            end_event.record()
+            torch.cuda.synchronize()
+
+            tensorrt_time = start_event.elapsed_time(end_event) / ITER
+
         if print_output:
             print(out)
 
@@ -361,25 +333,22 @@ def main():
             inputs = (X,)
 
         ti = ti.eval()
-        if use_graph:
-            print(f"Pytorch Eager with CUDA Graph: 0 ms")
-        else:
-            with torch.no_grad():
-                for _ in range(10):
-                    out = ti(*inputs)
-                torch.cuda.synchronize()
-
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record()
-                for _ in range(ITER):
-                    _ = ti(*inputs)
-                end_event.record()
-                torch.cuda.synchronize()
-
-                time = start_event.elapsed_time(end_event) / ITER
-                print(f"Pytorch Eager without CUDA Graph: {time} ms")
         
+        with torch.no_grad():
+            for _ in range(10):
+                out = ti(*inputs)
+            torch.cuda.synchronize()
+
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            for _ in range(ITER):
+                _ = ti(*inputs)
+            end_event.record()
+            torch.cuda.synchronize()
+
+            torcheager_time = start_event.elapsed_time(end_event) / ITER
+
         if print_output:
             print(out)
 
@@ -393,24 +362,22 @@ def main():
         else:
             inputs = (X,)
 
-        modes = ["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"]
-        for mode in modes:
-            compiled_model = torch.compile(ti, backend="inductor", mode=mode, fullgraph=True)
-            for _ in range(10):
-                out = compiled_model(*inputs)
-            torch.cuda.synchronize()
+        mode = "max-autotune-no-cudagraphs"
+        compiled_model = torch.compile(ti, backend="inductor", mode=mode, fullgraph=True)
+        for _ in range(10):
+            out = compiled_model(*inputs)
+        torch.cuda.synchronize()
 
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            for _ in range(ITER):
-                _ = compiled_model(*inputs)
-            end_event.record()
-            torch.cuda.synchronize()
+        start_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record()
+        for _ in range(ITER):
+            _ = compiled_model(*inputs)
+        end_event.record()
+        torch.cuda.synchronize()
 
-            time = start_event.elapsed_time(end_event) / ITER
-            print(f"Torch Inductor {mode}: {time} ms")
-        
+        inductor_time = start_event.elapsed_time(end_event) / ITER
+
         if print_output:
             print(out)
     
@@ -421,25 +388,22 @@ def main():
         
         fi.half()
         fi = fi.eval()
-        if use_graph:
-            print(f"FlashInfer with CUDA Graph: 0 ms")
-        else:
-            with torch.no_grad():
-                for _ in range(10):
-                    out = fi(X)
-                torch.cuda.synchronize()
-
-                start_event = torch.cuda.Event(enable_timing=True)
-                end_event = torch.cuda.Event(enable_timing=True)
-                start_event.record()
-                for _ in range(ITER):
-                    _ = fi(X)
-                end_event.record()
-                torch.cuda.synchronize()
-
-                time = start_event.elapsed_time(end_event) / ITER
-                print(f"FlashInfer without CUDA Graph: {time} ms")
         
+        with torch.no_grad():
+            for _ in range(10):
+                out = fi(X)
+            torch.cuda.synchronize()
+
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record()
+            for _ in range(ITER):
+                _ = fi(X)
+            end_event.record()
+            torch.cuda.synchronize()
+
+            flashinfer_time = start_event.elapsed_time(end_event) / ITER
+
         if print_output:
             print(out)
     
@@ -448,11 +412,41 @@ def main():
         print("="*50)
         print(f"Starting FlashTensor {target}...")
 
-        if use_graph:
-            print(f"FlashTensor with CUDA Graph: 0ms")
+
+        flashtensor_time = ft(model, M, N, P, D, H, device, dtype)
+
+    # ----------------- Results Summary ---------------------
+    results = []
+    if trinity_time is not None:
+        results.append(("Trinity", trinity_time))
+    if tensorrt_time is not None:
+        results.append(("TensorRT", tensorrt_time))
+    if torcheager_time is not None:
+        results.append(("PyTorch Eager", torcheager_time))
+    if inductor_time is not None:
+        results.append(("Torch Inductor", inductor_time))
+    if flashinfer_time is not None:
+        results.append(("FlashInfer", flashinfer_time))
+    if flashtensor_time is not None:
+        results.append(("FlashTensor", flashtensor_time))
+
+    if results:
+        print("\n" + "="*50)
+        print(f"BENCHMARK RESULTS: {target.upper()} ({model.upper()})")
+        print("="*50)
+
+        if trinity_time is not None:
+            print(f"{'Method':<20} {'Time (ms)':<15} {'Speedup':<10}")
+            print("-" * 45)
+            for name, time_val in results:
+                speedup = time_val / trinity_time
+                speedup_str = f"{speedup:.2f}x" if name != "Trinity" else "1.00x"
+                print(f"{name:<20} {time_val:<15.4f} {speedup_str:<10}")
         else:
-            time = ft(model, M, N, P, D, H, device, dtype)
-            print(f"FlashTensor without CUDA Graph: {time} ms")
+            print(f"{'Method':<20} {'Time (ms)':<15}")
+            print("-" * 35)
+            for name, time_val in results:
+                print(f"{name:<20} {time_val:<15.4f}")
 
 
 if __name__ == "__main__":
