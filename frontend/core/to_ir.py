@@ -507,5 +507,124 @@ def calls_to_ir(main_func: T.MainFunc, level: int = 0, role_map=None) -> str:
         call_to_lisp=call_to_lisp,
     )
 
+
+def calls_to_ir_with_groups(main_func: T.MainFunc, groups, level: int = 0, role_map=None) -> str:
+    calls = main_func.calls
+    if role_map is None:
+        role_map = {t.name: "input" for t in main_func.input_tensors}
+        for tensor in main_func.output_tensors:
+            role_map[tensor.name] = "output"
+
+    group_by_start = {group.call_indices[0]: group for group in groups}
+    skipped = {idx for group in groups for idx in group.call_indices[1:]}
+    exprs: List[str] = []
+
+    for idx, call in enumerate(calls):
+        if idx in skipped:
+            continue
+        group = group_by_start.get(idx)
+        if group is None:
+            exprs.append(primfunc_call_root_to_lisp(call, 0, role_map=role_map))
+            continue
+        exprs.append(_group_to_lisp(call, group, role_map=role_map))
+
+    return _exprs_to_seq_lisp(exprs, level)
+
 def _get_clean_name(raw_name: str) -> str:
     return raw_name.replace("v_", "")
+
+
+def _group_to_lisp(call: T.PrimFuncCall, group, role_map=None) -> str:
+    local_role_map = dict(role_map or {})
+
+    def register_joined_role(joined_name: str, names: list[str]) -> None:
+        roles = {local_role_map.get(name) for name in names}
+        roles.discard(None)
+        if len(roles) == 1:
+            local_role_map[joined_name] = next(iter(roles))
+
+    read_slot_map: dict[str, int] = {}
+    write_slot_map: dict[str, int] = {}
+
+    for names in group.varying_read_slots.values():
+        register_joined_role(",".join(names), names)
+    for names in group.write_slots.values():
+        register_joined_role(",".join(names), names)
+
+    def assign_read(name: str) -> int:
+        if name not in read_slot_map:
+            read_slot_map[name] = len(read_slot_map)
+        return read_slot_map[name]
+
+    def assign_write(name: str) -> int:
+        if name not in write_slot_map:
+            write_slot_map[name] = len(write_slot_map)
+        return write_slot_map[name]
+
+    def rewrite(node: T.ASTNode) -> T.ASTNode:
+        if isinstance(node, T.Load):
+            slot = assign_read(node.tensor.name)
+            if slot in group.exact_read_slots:
+                tensor_name = group.exact_read_slots[slot]
+            else:
+                tensor_name = ",".join(group.varying_read_slots[slot])
+            return T.Load(T.Tensor(tensor_name), rewrite(node.index))
+        if isinstance(node, T.Store):
+            slot = assign_write(node.tensor.name)
+            tensor_name = ",".join(group.write_slots[slot])
+            return T.Store(T.Tensor(tensor_name), rewrite(node.value), rewrite(node.index))
+        if isinstance(node, T.Seq):
+            return T.Seq(rewrite(node.left), rewrite(node.right))
+        if isinstance(node, T.Block):
+            return T.Block([rewrite(stmt) for stmt in node.stmts])
+        if isinstance(node, T.Loop):
+            return T.Loop(node.start, node.end, node.tile_name, node.loop_var, rewrite(node.body))
+        if isinstance(node, T.If):
+            else_branch = rewrite(node.else_branch) if node.else_branch else None
+            return T.If(rewrite(node.cond), rewrite(node.then_branch), else_branch)
+        if isinstance(node, T.Let):
+            return T.Let(rewrite(node.tensor), rewrite(node.value), rewrite(node.body))
+        if isinstance(node, T.Index):
+            return T.Index([rewrite(idx) for idx in node.indices])
+        if isinstance(node, (T.Add, T.Sub, T.Mul, T.Div, T.Max, T.Min, T.Matmul)):
+            return node.__class__(rewrite(node.left), rewrite(node.right))
+        if isinstance(node, (T.Exp, T.Sqr, T.Sqrt, T.Sigmoid)):
+            return node.__class__(rewrite(node.val))
+        if isinstance(node, T.Cast):
+            return T.Cast(node.dtype, rewrite(node.val))
+        if isinstance(node, (T.ReduceSum, T.ReduceMax, T.ReduceMin, T.Broadcast)):
+            return node.__class__(rewrite(node.val), node.axis)
+        if isinstance(node, T.Concat):
+            return T.Concat(rewrite(node.a), rewrite(node.b), node.axis)
+        if isinstance(node, T.Permute3):
+            return T.Permute3(rewrite(node.val), node.d0, node.d1, node.d2)
+        if isinstance(node, T.Squeeze):
+            return T.Squeeze(rewrite(node.val), node.axis)
+        if isinstance(node, T.Unsqueeze):
+            return T.Unsqueeze(rewrite(node.val), node.axis)
+        if isinstance(node, T.GenericBinary):
+            return T.GenericBinary(node.op, rewrite(node.left), rewrite(node.right))
+        if isinstance(node, T.GenericCall):
+            return T.GenericCall(node.func_name, [rewrite(arg) for arg in node.args])
+        if isinstance(node, T.Take):
+            return T.Take(rewrite(node.data), rewrite(node.indices), node.axis, rewrite(node.index))
+        return node
+
+    new_root = rewrite(call.primfunc.root_node)
+    return ast_to_lisp(new_root, 0, role_map=local_role_map)
+
+
+def _exprs_to_seq_lisp(exprs: List[str], level: int = 0) -> str:
+    if not exprs:
+        return ""
+    if len(exprs) == 1:
+        return _indent_block(exprs[0], level)
+    prefix = "  " * level if level >= 0 else ""
+    left = _indent_block(exprs[0], level + 1)
+    right = _exprs_to_seq_lisp(exprs[1:], 0)
+    return f"{prefix}(seq\n{left}\n{right}\n{prefix})"
+
+
+def _indent_block(text: str, level: int) -> str:
+    prefix = "  " * level
+    return "\n".join(f"{prefix}{line}" if line else line for line in text.splitlines())

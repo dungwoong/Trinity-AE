@@ -4,7 +4,7 @@ import os
 from dataclasses import is_dataclass
 from typing import List, Optional
 import ir.AST as T
-from core.to_ir import ast_to_lisp, calls_to_ir
+from core.to_ir import ast_to_lisp, calls_to_ir, calls_to_ir_with_groups
 
 def format_main_func(main_func: T.MainFunc, role_map: dict[str, str] | None = None) -> str:
     if role_map is None:
@@ -158,6 +158,7 @@ def export_main_func(
     main_func: T.MainFunc,
     output_dir: str,
     basename: str,
+    fusion_groups=None,
 ) -> None:
     inner_output_dir = f"{output_dir}/trinity/{basename}"
     os.makedirs(inner_output_dir, exist_ok=True)
@@ -169,7 +170,10 @@ def export_main_func(
     with open(main_path, "w") as f:
         f.write(format_main_func(main_func))
     with open(seq_path, "w") as f:
-        f.write(calls_to_ir(main_func))
+        if fusion_groups:
+            f.write(calls_to_ir_with_groups(main_func, fusion_groups))
+        else:
+            f.write(calls_to_ir(main_func))
     with open(shapes_path, "w") as f:
         json.dump(_collect_tensor_shapes(main_func), f, indent=2)
 

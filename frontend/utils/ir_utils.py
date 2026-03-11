@@ -1,7 +1,17 @@
 import copy
 import dataclasses
+from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 import ir.AST as T
+
+
+@dataclass
+class FusionGroup:
+    call_indices: List[int]
+    signature: str
+    exact_read_slots: Dict[int, str]
+    varying_read_slots: Dict[int, List[str]]
+    write_slots: Dict[int, List[str]]
 
 def bind_primfunc_to_call(call: T.PrimFuncCall) -> T.PrimFunc:
     """
@@ -1489,6 +1499,300 @@ def _count_loads(node: T.ASTNode, tensor_name: str) -> int:
 
 def _count_loads_in_calls(calls: List[T.PrimFuncCall], tensor_name: str) -> int:
     return sum(_count_loads(call.primfunc.root_node, tensor_name) for call in calls)
+
+
+def _collect_store_tensor_names(node: T.ASTNode) -> set[str]:
+    names: set[str] = set()
+
+    def visit(cur: T.ASTNode) -> None:
+        if isinstance(cur, T.Store):
+            names.add(cur.tensor.name)
+            visit(cur.value)
+            return
+        if isinstance(cur, T.Seq):
+            visit(cur.left)
+            visit(cur.right)
+            return
+        if isinstance(cur, T.Block):
+            for stmt in cur.stmts:
+                visit(stmt)
+            return
+        if isinstance(cur, T.Loop):
+            visit(cur.body)
+            return
+        if isinstance(cur, T.If):
+            visit(cur.then_branch)
+            if cur.else_branch:
+                visit(cur.else_branch)
+            return
+        if isinstance(cur, T.Let):
+            visit(cur.value)
+            visit(cur.body)
+            return
+        if isinstance(cur, (T.Add, T.Sub, T.Mul, T.Div, T.Max, T.Min, T.Matmul)):
+            visit(cur.left)
+            visit(cur.right)
+            return
+        if isinstance(cur, (T.Exp, T.Sqr, T.Sqrt, T.Sigmoid, T.Cast)):
+            visit(cur.val)
+            return
+        if isinstance(cur, (T.ReduceSum, T.ReduceMax, T.ReduceMin, T.Broadcast)):
+            visit(cur.val)
+            return
+        if isinstance(cur, T.Concat):
+            visit(cur.a)
+            visit(cur.b)
+            return
+        if isinstance(cur, (T.Permute3, T.Squeeze, T.Unsqueeze)):
+            visit(cur.val)
+            return
+        if isinstance(cur, T.GenericBinary):
+            visit(cur.left)
+            visit(cur.right)
+            return
+        if isinstance(cur, T.GenericCall):
+            for arg in cur.args:
+                visit(arg)
+
+    visit(node)
+    return names
+
+
+@dataclass
+class _CallPattern:
+    signature: str
+    read_slots: List[str]
+    write_slots: List[str]
+    reads: set[str]
+    writes: set[str]
+
+
+def _analyze_call_pattern(call: T.PrimFuncCall) -> _CallPattern:
+    read_slot_ids: dict[str, int] = {}
+    write_slot_ids: dict[str, int] = {}
+    read_slots: List[str] = []
+    write_slots: List[str] = []
+
+    def get_read_slot(name: str) -> int:
+        if name not in read_slot_ids:
+            read_slot_ids[name] = len(read_slots)
+            read_slots.append(name)
+        return read_slot_ids[name]
+
+    def get_write_slot(name: str) -> int:
+        if name not in write_slot_ids:
+            write_slot_ids[name] = len(write_slots)
+            write_slots.append(name)
+        return write_slot_ids[name]
+
+    def sig_index(index: T.Index) -> str:
+        return "(index " + " ".join(sig(idx) for idx in index.indices) + ")"
+
+    def sig(node: T.ASTNode) -> str:
+        if isinstance(node, T.Store):
+            slot = get_write_slot(node.tensor.name)
+            return f"(store W{slot} {sig(node.value)} {sig(node.index)})"
+        if isinstance(node, T.Load):
+            slot = get_read_slot(node.tensor.name)
+            return f"(load R{slot} {sig(node.index)})"
+        if isinstance(node, T.Loop):
+            return f"(loop {sig(node.start)} {sig(node.end)} {node.tile_name} {node.loop_var} {sig(node.body)})"
+        if isinstance(node, T.Seq):
+            return f"(seq {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Block):
+            return "(block " + " ".join(sig(stmt) for stmt in node.stmts) + ")"
+        if isinstance(node, T.Index):
+            return sig_index(node)
+        if isinstance(node, T.Tile):
+            return f"(tile {node.name})"
+        if isinstance(node, T.TileOffset):
+            return f"(shifted_tile {node.name} {node.offset})"
+        if isinstance(node, T.ConstTile):
+            return f"(const_tile {node.start_index} {node.interval})"
+        if isinstance(node, T.FullTile):
+            return "fulltile"
+        if isinstance(node, T.Elem):
+            return f"(elem {node.name})"
+        if isinstance(node, T.VarRef):
+            return node.name
+        if isinstance(node, T.Const):
+            return str(node.value)
+        if isinstance(node, T.Add):
+            return f"(+ {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Sub):
+            return f"(- {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Mul):
+            return f"(* {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Div):
+            return f"(/ {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Max):
+            return f"(max {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Min):
+            return f"(min {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Matmul):
+            return f"(@ {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.Exp):
+            return f"(exp {sig(node.val)})"
+        if isinstance(node, T.Sqr):
+            return f"(sqr {sig(node.val)})"
+        if isinstance(node, T.Sqrt):
+            return f"(sqrt {sig(node.val)})"
+        if isinstance(node, T.Sigmoid):
+            return f"(sigmoid {sig(node.val)})"
+        if isinstance(node, T.Cast):
+            return f"(cast {node.dtype} {sig(node.val)})"
+        if isinstance(node, T.ReduceSum):
+            return f"(rsum {sig(node.val)} {node.axis})"
+        if isinstance(node, T.ReduceMax):
+            return f"(rmax {sig(node.val)} {node.axis})"
+        if isinstance(node, T.ReduceMin):
+            return f"(rmin {sig(node.val)} {node.axis})"
+        if isinstance(node, T.Broadcast):
+            return f"(bcast {sig(node.val)} {node.axis})"
+        if isinstance(node, T.Concat):
+            return f"(concat {sig(node.a)} {sig(node.b)} {node.axis})"
+        if isinstance(node, T.Permute3):
+            return f"(permute3 {sig(node.val)} {node.d0} {node.d1} {node.d2})"
+        if isinstance(node, T.Squeeze):
+            return f"(squeeze {sig(node.val)} {node.axis})"
+        if isinstance(node, T.Unsqueeze):
+            return f"(unsqueeze {sig(node.val)} {node.axis})"
+        if isinstance(node, T.GenericBinary):
+            return f"({node.op} {sig(node.left)} {sig(node.right)})"
+        if isinstance(node, T.GenericCall):
+            return f"({node.func_name} {' '.join(sig(arg) for arg in node.args)})"
+        if isinstance(node, T.Take):
+            return f"(take {sig(node.data)} {sig(node.indices)} {node.axis} {sig(node.index)})"
+        if isinstance(node, T.If):
+            else_part = f" {sig(node.else_branch)}" if node.else_branch else ""
+            return f"(if {sig(node.cond)} {sig(node.then_branch)}{else_part})"
+        if isinstance(node, T.Let):
+            return f"(let {sig(node.tensor)} {sig(node.value)} {sig(node.body)})"
+        if isinstance(node, T.Arange):
+            return f"(arange {node.axis})"
+        if isinstance(node, T.Tensor):
+            return "(tensor)"
+        return node.__class__.__name__
+
+    root = call.primfunc.root_node
+    return _CallPattern(
+        signature=sig(root),
+        read_slots=read_slots,
+        write_slots=write_slots,
+        reads=_collect_load_tensor_names(root),
+        writes=_collect_store_tensor_names(root),
+    )
+
+
+def _calls_conflict(lhs: _CallPattern, rhs: _CallPattern) -> bool:
+    return bool(
+        (lhs.writes & rhs.reads)
+        or (rhs.writes & lhs.reads)
+        or (lhs.writes & rhs.writes)
+    )
+
+
+def plan_fusion_groups(main_func: T.MainFunc) -> List[FusionGroup]:
+    calls = list(main_func.calls)
+    if len(calls) < 2:
+        return []
+
+    analyses = [_analyze_call_pattern(call) for call in calls]
+    groups: List[FusionGroup] = []
+    i = 0
+    while i < len(calls):
+        base = analyses[i]
+        run = [i]
+        exact_slots = set(range(len(base.read_slots)))
+        j = i + 1
+        while j < len(calls):
+            cur = analyses[j]
+            if cur.signature != base.signature:
+                break
+            if any(_calls_conflict(analyses[k], cur) for k in run):
+                break
+            next_exact = {
+                slot
+                for slot in exact_slots
+                if slot < len(cur.read_slots) and cur.read_slots[slot] == base.read_slots[slot]
+            }
+            run.append(j)
+            exact_slots = next_exact
+            j += 1
+
+        if len(run) >= 2:
+            exact_read_slots = {slot: base.read_slots[slot] for slot in sorted(exact_slots)}
+            varying_read_slots = {
+                slot: [analyses[idx].read_slots[slot] for idx in run]
+                for slot in range(len(base.read_slots))
+                if slot not in exact_slots
+            }
+            write_slots = {
+                slot: [analyses[idx].write_slots[slot] for idx in run]
+                for slot in range(len(base.write_slots))
+            }
+            if not varying_read_slots:
+                i = j
+                continue
+            groups.append(
+                FusionGroup(
+                    call_indices=run,
+                    signature=base.signature,
+                    exact_read_slots=exact_read_slots,
+                    varying_read_slots=varying_read_slots,
+                    write_slots=write_slots,
+                )
+            )
+            i = j
+            continue
+        i += 1
+
+    return groups
+
+
+def validate_fusion_groups(main_func: T.MainFunc, groups: List[FusionGroup]) -> List[str]:
+    calls = list(main_func.calls)
+    analyses = [_analyze_call_pattern(call) for call in calls]
+    errors: List[str] = []
+    covered: set[int] = set()
+
+    for group in groups:
+        indices = group.call_indices
+        if len(indices) < 2:
+            errors.append("fusion group must contain at least two calls")
+            continue
+        if indices != list(range(indices[0], indices[0] + len(indices))):
+            errors.append(f"fusion group is not contiguous: {indices}")
+        if any(idx < 0 or idx >= len(calls) for idx in indices):
+            errors.append(f"fusion group index out of range: {indices}")
+            continue
+        if covered & set(indices):
+            errors.append(f"fusion group overlaps another group: {indices}")
+        covered.update(indices)
+
+        base = analyses[indices[0]]
+        if base.signature != group.signature:
+            errors.append(f"fusion group signature mismatch at {indices[0]}")
+        for idx in indices[1:]:
+            cur = analyses[idx]
+            if cur.signature != base.signature:
+                errors.append(f"fusion group calls have different skeletons: {indices}")
+                break
+            if _calls_conflict(base, cur):
+                errors.append(f"fusion group calls conflict: {indices}")
+                break
+
+        if not group.varying_read_slots:
+            errors.append(f"fusion group has no varying inputs: {indices}")
+
+        for slot, exact_name in group.exact_read_slots.items():
+            for idx in indices:
+                cur = analyses[idx]
+                if slot >= len(cur.read_slots) or cur.read_slots[slot] != exact_name:
+                    errors.append(f"fusion group exact input mismatch at slot {slot}: {indices}")
+                    break
+
+    return errors
 
 
 def _inline_loads(

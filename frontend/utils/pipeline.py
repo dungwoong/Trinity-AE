@@ -13,6 +13,8 @@ from utils.ir_utils import (
     inline_elementwise_op_calls,
     inline_shape_op_calls,
     normalize_main_func_axes,
+    plan_fusion_groups,
+    validate_fusion_groups,
 )
 from utils.test_utils import validate_main_func_errors
 from utils.tir_utils import to_relax, to_tir
@@ -71,6 +73,8 @@ def export_model_ir(
     if inline_elementwise_op:
         main_func_ir = inline_elementwise_op_calls(main_func_ir)
 
+    fusion_groups = plan_fusion_groups(main_func_ir)
     errors = validate_main_func_errors(main_func_ir, context=context or basename)
-    export_main_func(main_func_ir, output_dir, basename)
+    errors.extend(validate_fusion_groups(main_func_ir, fusion_groups))
+    export_main_func(main_func_ir, output_dir, basename, fusion_groups=fusion_groups)
     return main_func_ir, errors
