@@ -2,7 +2,12 @@ from typing import List, Optional
 from tvm import tir
 from tvm import tir
 import ir.AST as T
-from utils.ir_utils import remove_short_loop_nodes, remove_let_nodes, decompose_operations
+from utils.ir_utils import (
+    remove_short_loop_nodes,
+    remove_smallest_inner_loops,
+    remove_let_nodes,
+    decompose_operations,
+)
 
 def build_primfunc_nodes(
     tir_mod,
@@ -64,6 +69,7 @@ def build_primfunc_nodes(
             if tmp_tensors:
                 allocated_tensors.extend(tmp_tensors)
         root_node = remove_short_loop_nodes(root_node, threshold=remove_short_loop_threshold)
+        root_node = remove_smallest_inner_loops(root_node, max_extent=384)
 
 
         primfunc_nodes.append(

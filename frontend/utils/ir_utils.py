@@ -726,6 +726,15 @@ def remove_short_loop_nodes(node, eliminated_vars=None, threshold=64):
     transformed = _transform_seq(exprs, eliminated_vars or set(), threshold)
     return _to_lisp_program(transformed)
 
+
+def remove_smallest_inner_loops(node: T.ASTNode, max_extent: int = 384) -> T.ASTNode:
+    """
+    For loop chains with depth >= 2, repeatedly remove the smallest non-outermost loop
+    whose extent is <= max_extent. Stop when the chain becomes 1-deep or no eligible
+    inner loop remains.
+    """
+    return _remove_smallest_inner_loops(node, max_extent=max_extent)
+
 def remove_let_nodes(root: T.ASTNode) -> T.ASTNode:
     """
     Let stmt를 제거하고 바인딩된 값을 body에 직접 치환한 AST를 반환합니다.
@@ -2718,6 +2727,268 @@ def _replace_short_loops_with_fulltile(node, eliminated_vars: set, threshold: in
         return T.Cast(node.dtype, _replace_short_loops_with_fulltile(node.val, eliminated_vars, threshold))
 
     return node
+
+
+def _contains_elem_for_loop(n: T.ASTNode, loop_var: str) -> bool:
+    if isinstance(n, T.Elem):
+        return _clean_var_name(n.name) == _clean_var_name(loop_var)
+    if isinstance(n, T.TileOffset):
+        return _clean_var_name(n.name) == _clean_var_name(loop_var)
+    if isinstance(n, T.Index):
+        return any(_contains_elem_for_loop(idx, loop_var) for idx in n.indices)
+    if isinstance(n, T.Load):
+        return _contains_elem_for_loop(n.index, loop_var)
+    if isinstance(n, T.Store):
+        return _contains_elem_for_loop(n.value, loop_var) or _contains_elem_for_loop(n.index, loop_var)
+    if isinstance(n, T.Block):
+        return any(_contains_elem_for_loop(stmt, loop_var) for stmt in n.stmts)
+    if isinstance(n, T.Loop):
+        return _contains_elem_for_loop(n.body, loop_var)
+    if isinstance(n, T.If):
+        return (
+            _contains_elem_for_loop(n.cond, loop_var)
+            or _contains_elem_for_loop(n.then_branch, loop_var)
+            or (_contains_elem_for_loop(n.else_branch, loop_var) if n.else_branch else False)
+        )
+    if isinstance(n, T.Let):
+        return _contains_elem_for_loop(n.value, loop_var) or _contains_elem_for_loop(n.body, loop_var)
+    if isinstance(n, (T.Add, T.Sub, T.Mul, T.Div, T.Max, T.Min, T.Matmul, T.GenericBinary)):
+        return _contains_elem_for_loop(n.left, loop_var) or _contains_elem_for_loop(n.right, loop_var)
+    if isinstance(n, (T.Exp, T.Sqr, T.Sqrt, T.Sigmoid, T.Cast)):
+        return _contains_elem_for_loop(n.val, loop_var)
+    if isinstance(n, (T.Unsqueeze, T.Squeeze, T.Broadcast)):
+        return _contains_elem_for_loop(n.val, loop_var)
+    if isinstance(n, (T.ReduceSum, T.ReduceMax, T.ReduceMin)):
+        return _contains_elem_for_loop(n.val, loop_var)
+    if isinstance(n, T.Take):
+        return (
+            _contains_elem_for_loop(n.data, loop_var)
+            or _contains_elem_for_loop(n.indices, loop_var)
+            or _contains_elem_for_loop(n.index, loop_var)
+        )
+    if isinstance(n, T.Concat):
+        return _contains_elem_for_loop(n.a, loop_var) or _contains_elem_for_loop(n.b, loop_var)
+    if isinstance(n, T.GenericCall):
+        return any(_contains_elem_for_loop(arg, loop_var) for arg in n.args)
+    return False
+
+
+def _eliminate_loop_vars_with_fulltile(node: T.ASTNode, eliminated_vars: set[str]) -> T.ASTNode:
+    if not eliminated_vars:
+        return node
+    if isinstance(node, T.Tile):
+        clean_name = _clean_var_name(node.name)
+        if node.name in eliminated_vars or clean_name in eliminated_vars:
+            return T.FullTile()
+        return node
+    if isinstance(node, T.TileOffset):
+        clean_name = _clean_var_name(node.name)
+        if node.name in eliminated_vars or clean_name in eliminated_vars:
+            return T.FullTile()
+        return node
+    if isinstance(node, T.Elem):
+        clean_name = _clean_var_name(node.name)
+        if node.name in eliminated_vars or clean_name in eliminated_vars:
+            return T.FullTile()
+        return node
+    if isinstance(node, T.Index):
+        return T.Index([_eliminate_loop_vars_with_fulltile(idx, eliminated_vars) for idx in node.indices])
+    if isinstance(node, T.Load):
+        return T.Load(
+            _eliminate_loop_vars_with_fulltile(node.tensor, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.index, eliminated_vars),
+        )
+    if isinstance(node, T.Store):
+        return T.Store(
+            _eliminate_loop_vars_with_fulltile(node.tensor, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.value, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.index, eliminated_vars),
+        )
+    if isinstance(node, T.Block):
+        return T.Block([_eliminate_loop_vars_with_fulltile(stmt, eliminated_vars) for stmt in node.stmts])
+    if isinstance(node, T.If):
+        return T.If(
+            _eliminate_loop_vars_with_fulltile(node.cond, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.then_branch, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.else_branch, eliminated_vars) if node.else_branch else None,
+        )
+    if isinstance(node, T.Let):
+        return T.Let(
+            _eliminate_loop_vars_with_fulltile(node.tensor, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.value, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.body, eliminated_vars),
+        )
+    if isinstance(node, T.Loop):
+        clean_loop_var = _clean_var_name(node.loop_var)
+        if node.loop_var in eliminated_vars or clean_loop_var in eliminated_vars:
+            local_elims = set(eliminated_vars)
+            local_elims.add(node.loop_var)
+            local_elims.add(clean_loop_var)
+            local_elims.add(f"v_{clean_loop_var}")
+            return _eliminate_loop_vars_with_fulltile(node.body, local_elims)
+        return T.Loop(
+            _eliminate_loop_vars_with_fulltile(node.start, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.end, eliminated_vars),
+            node.tile_name,
+            node.loop_var,
+            _eliminate_loop_vars_with_fulltile(node.body, eliminated_vars),
+        )
+    if isinstance(node, T.Seq):
+        return T.Seq(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Add):
+        return T.Add(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Sub):
+        return T.Sub(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Mul):
+        return T.Mul(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Div):
+        return T.Div(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Max):
+        return T.Max(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Min):
+        return T.Min(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Matmul):
+        return T.Matmul(
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.Exp):
+        return T.Exp(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars))
+    if isinstance(node, T.Sqr):
+        return T.Sqr(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars))
+    if isinstance(node, T.Sqrt):
+        return T.Sqrt(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars))
+    if isinstance(node, T.Sigmoid):
+        return T.Sigmoid(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars))
+    if isinstance(node, T.Take):
+        return T.Take(
+            _eliminate_loop_vars_with_fulltile(node.data, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.indices, eliminated_vars),
+            node.axis,
+            _eliminate_loop_vars_with_fulltile(node.index, eliminated_vars),
+        )
+    if isinstance(node, T.ReduceSum):
+        return T.ReduceSum(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.axis)
+    if isinstance(node, T.ReduceMax):
+        return T.ReduceMax(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.axis)
+    if isinstance(node, T.ReduceMin):
+        return T.ReduceMin(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.axis)
+    if isinstance(node, T.Concat):
+        return T.Concat(
+            _eliminate_loop_vars_with_fulltile(node.a, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.b, eliminated_vars),
+            node.axis,
+        )
+    if isinstance(node, T.Broadcast):
+        return T.Broadcast(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.axis)
+    if isinstance(node, T.Permute3):
+        return T.Permute3(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.d0, node.d1, node.d2)
+    if isinstance(node, T.Squeeze):
+        return T.Squeeze(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.axis)
+    if isinstance(node, T.Unsqueeze):
+        return T.Unsqueeze(_eliminate_loop_vars_with_fulltile(node.val, eliminated_vars), node.axis)
+    if isinstance(node, T.GenericBinary):
+        return T.GenericBinary(
+            node.op,
+            _eliminate_loop_vars_with_fulltile(node.left, eliminated_vars),
+            _eliminate_loop_vars_with_fulltile(node.right, eliminated_vars),
+        )
+    if isinstance(node, T.GenericCall):
+        return T.GenericCall(
+            node.func_name,
+            [_eliminate_loop_vars_with_fulltile(arg, eliminated_vars) for arg in node.args],
+        )
+    if isinstance(node, T.Cast):
+        return T.Cast(node.dtype, _eliminate_loop_vars_with_fulltile(node.val, eliminated_vars))
+    return node
+
+
+def _remove_smallest_inner_loops(node: T.ASTNode, max_extent: int) -> T.ASTNode:
+    if isinstance(node, T.Seq):
+        return T.Seq(
+            _remove_smallest_inner_loops(node.left, max_extent),
+            _remove_smallest_inner_loops(node.right, max_extent),
+        )
+    if isinstance(node, T.Block):
+        return T.Block([_remove_smallest_inner_loops(stmt, max_extent) for stmt in node.stmts])
+    if isinstance(node, T.If):
+        return T.If(
+            _remove_smallest_inner_loops(node.cond, max_extent),
+            _remove_smallest_inner_loops(node.then_branch, max_extent),
+            _remove_smallest_inner_loops(node.else_branch, max_extent) if node.else_branch else None,
+        )
+    if isinstance(node, T.Let):
+        return T.Let(
+            _remove_smallest_inner_loops(node.tensor, max_extent),
+            _remove_smallest_inner_loops(node.value, max_extent),
+            _remove_smallest_inner_loops(node.body, max_extent),
+        )
+    if not isinstance(node, T.Loop):
+        return node
+
+    transformed_root: T.ASTNode = node
+    while True:
+        chain: list[T.Loop] = []
+        cur = transformed_root
+        while isinstance(cur, T.Loop):
+            chain.append(cur)
+            cur = cur.body
+        if len(chain) < 2:
+            break
+
+        candidates: list[tuple[int, int, str]] = []
+        for idx, loop in enumerate(chain[1:], start=1):
+            start_val = _eval_int(loop.start)
+            end_val = _eval_int(loop.end)
+            if start_val is None or end_val is None:
+                continue
+            extent = end_val - start_val
+            if extent > max_extent:
+                continue
+            if _contains_elem_for_loop(loop.body, loop.loop_var):
+                continue
+            candidates.append((extent, idx, loop.loop_var))
+
+        if not candidates:
+            break
+
+        _, _, loop_var = min(candidates, key=lambda item: (item[0], item[1]))
+        clean_var = _clean_var_name(loop_var)
+        transformed_root = _eliminate_loop_vars_with_fulltile(
+            transformed_root,
+            {loop_var, clean_var, f"v_{clean_var}"},
+        )
+
+    if isinstance(transformed_root, T.Loop):
+        return T.Loop(
+            transformed_root.start,
+            transformed_root.end,
+            transformed_root.tile_name,
+            transformed_root.loop_var,
+            _remove_smallest_inner_loops(transformed_root.body, max_extent),
+        )
+    return _remove_smallest_inner_loops(transformed_root, max_extent)
 
 def _tokenize_lisp(text: str) -> list[str]:
     tokens: list[str] = []
