@@ -46,7 +46,7 @@ def export_model_ir(
         if context is None:
             context = inferred
 
-    relax_mod = to_relax(model, example_inputs)
+    relax_mod, user_output_count = to_relax(model, example_inputs)
     tir_mod = to_tir(relax_mod)
 
     os.makedirs(f"{output_dir}/tvm", exist_ok=True)
@@ -63,7 +63,7 @@ def export_model_ir(
         remove_short_loop_threshold=remove_short_loop_threshold,
     )
 
-    main_func_ir = build_main_func(tir_mod, primfunc_nodes)
+    main_func_ir = build_main_func(tir_mod, primfunc_nodes, user_output_count=user_output_count)
     main_func_ir = sequentialize_main_func(main_func_ir)
     main_func_ir = bind_main_func_calls(main_func_ir)
     main_func_ir = normalize_main_func_axes(main_func_ir)

@@ -11,7 +11,8 @@ def to_relax(model, example_input):
         if not isinstance(example_input, tuple):
             example_input = (example_input,)
         exported = export(model, example_input)
-    return from_exported_program(exported, keep_params_as_input=True)
+    user_output_count = len(getattr(exported.graph_signature, "user_outputs", []) or [])
+    return from_exported_program(exported, keep_params_as_input=True), user_output_count
 
 def to_tir(relax_mod):
     """Relax IR을 TIR로 lowering"""

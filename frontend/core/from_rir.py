@@ -4,7 +4,12 @@ import tvm
 from tvm import tir, relax
 import ir.AST as T
 
-def build_main_func(relax_mod, primfunc_nodes: List[T.PrimFunc], apply_alloc: bool = True) -> T.MainFunc:
+def build_main_func(
+    relax_mod,
+    primfunc_nodes: List[T.PrimFunc],
+    apply_alloc: bool = True,
+    user_output_count: Optional[int] = None,
+) -> T.MainFunc:
     primfunc_map = {pf.name: pf for pf in primfunc_nodes}
     main_func = relax_mod["main"]
 
@@ -138,6 +143,8 @@ def build_main_func(relax_mod, primfunc_nodes: List[T.PrimFunc], apply_alloc: bo
                 _add_output(field)
 
     _add_output(ret_expr)
+    if user_output_count is not None and user_output_count >= 0:
+        output_tensors = output_tensors[-user_output_count:] if user_output_count > 0 else []
 
     main_func_ir = T.MainFunc(
         calls=calls,
