@@ -116,7 +116,7 @@ def build_model_and_inputs():
         "example_inputs": (enc_in, dec_in),
         "inline_shape_op": True,
         "inline_elementwise_op": True,
-        "remove_short_loop_threshold": 64,
+        "remove_short_loop_threshold": 16,
         "decompose_nested_op_ratio": 0.0,
     }
 
