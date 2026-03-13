@@ -1701,6 +1701,29 @@ def _calls_conflict(lhs: _CallPattern, rhs: _CallPattern) -> bool:
     )
 
 
+def _rw_tensors(pattern: _CallPattern) -> set[str]:
+    return pattern.reads | pattern.writes
+
+
+def _has_intervening_dependency_on_candidate(
+    analyses: List[_CallPattern],
+    left_idx: int,
+    right_idx: int,
+) -> bool:
+    if left_idx > right_idx:
+        left_idx, right_idx = right_idx, left_idx
+    candidate = analyses[right_idx]
+    candidate_reads = candidate.reads
+    candidate_writes = candidate.writes
+    for mid_idx in range(left_idx + 1, right_idx):
+        mid = analyses[mid_idx]
+        if mid.writes & (candidate_reads | candidate_writes):
+            return True
+        if mid.reads & candidate_writes:
+            return True
+    return False
+
+
 def plan_fusion_groups(main_func: T.MainFunc) -> List[FusionGroup]:
     calls = list(main_func.calls)
     if len(calls) < 2:
@@ -1708,18 +1731,30 @@ def plan_fusion_groups(main_func: T.MainFunc) -> List[FusionGroup]:
 
     analyses = [_analyze_call_pattern(call) for call in calls]
     groups: List[FusionGroup] = []
+    covered: set[int] = set()
     i = 0
     while i < len(calls):
+        if i in covered:
+            i += 1
+            continue
         base = analyses[i]
         run = [i]
         exact_slots = set(range(len(base.read_slots)))
         j = i + 1
         while j < len(calls):
+            if j in covered:
+                j += 1
+                continue
             cur = analyses[j]
             if cur.signature != base.signature:
-                break
+                j += 1
+                continue
             if any(_calls_conflict(analyses[k], cur) for k in run):
-                break
+                j += 1
+                continue
+            if any(_has_intervening_dependency_on_candidate(analyses, k, j) for k in run):
+                j += 1
+                continue
             next_exact = {
                 slot
                 for slot in exact_slots
@@ -1749,7 +1784,8 @@ def plan_fusion_groups(main_func: T.MainFunc) -> List[FusionGroup]:
                     write_slots=write_slots,
                 )
             )
-            i = j
+            covered.update(run)
+            i += 1
             continue
         i += 1
 
@@ -1767,8 +1803,6 @@ def validate_fusion_groups(main_func: T.MainFunc, groups: List[FusionGroup]) -> 
         if len(indices) < 2:
             errors.append("fusion group must contain at least two calls")
             continue
-        if indices != list(range(indices[0], indices[0] + len(indices))):
-            errors.append(f"fusion group is not contiguous: {indices}")
         if any(idx < 0 or idx >= len(calls) for idx in indices):
             errors.append(f"fusion group index out of range: {indices}")
             continue
@@ -1787,6 +1821,18 @@ def validate_fusion_groups(main_func: T.MainFunc, groups: List[FusionGroup]) -> 
             if _calls_conflict(base, cur):
                 errors.append(f"fusion group calls conflict: {indices}")
                 break
+            if _has_intervening_dependency_on_candidate(analyses, indices[0], idx):
+                errors.append(f"fusion group has intervening tensor overlap: {indices}")
+                break
+
+        for pos, left_idx in enumerate(indices):
+            for right_idx in indices[pos + 1 :]:
+                if _calls_conflict(analyses[left_idx], analyses[right_idx]):
+                    errors.append(f"fusion group calls conflict: {indices}")
+                    break
+                if _has_intervening_dependency_on_candidate(analyses, left_idx, right_idx):
+                    errors.append(f"fusion group has intervening tensor overlap: {indices}")
+                    break
 
         for slot, exact_name in group.exact_read_slots.items():
             for idx in indices:
