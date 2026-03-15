@@ -91,7 +91,7 @@ def _extract_axes(prim_func: tir.PrimFunc) -> List[str]:
     seen = set()
 
     def visit(stmt):
-        if not isinstance(stmt, tir.Block):
+        if not isinstance(stmt, tir.SBlock):
             return
         for iter_var in stmt.iter_vars:
             var_name = iter_var.var.name
@@ -130,7 +130,7 @@ def _collect_allocated_tensors(prim_func: tir.PrimFunc) -> List[T.TensorInfo]:
         allocated[name] = info
 
     def visit(stmt):
-        if isinstance(stmt, tir.Block):
+        if isinstance(stmt, tir.SBlock):
             for buf in stmt.alloc_buffers:
                 info = _buffer_to_tensor_info(buf)
                 _register_alloc(info.name, info.shape, info.dtype)
@@ -214,7 +214,7 @@ def _infer_op_name_from_blocks(prim_func: tir.PrimFunc, output_name: str) -> Opt
         nonlocal hint
         if hint is not None:
             return
-        if not isinstance(stmt, tir.Block):
+        if not isinstance(stmt, tir.SBlock):
             return
         block_name = getattr(stmt, "name_hint", None) or getattr(stmt, "name", None) or ""
         block_name = str(block_name).lower()
@@ -240,7 +240,7 @@ def _infer_op_name_from_blocks(prim_func: tir.PrimFunc, output_name: str) -> Opt
     tir.stmt_functor.post_order_visit(prim_func.body, visit)
     return hint
 
-def _block_io_tensors(block: tir.Block) -> Optional[tuple[T.TensorInfo, T.TensorInfo]]:
+def _block_io_tensors(block: tir.SBlock) -> Optional[tuple[T.TensorInfo, T.TensorInfo]]:
     reads = getattr(block, "reads", None) or []
     writes = getattr(block, "writes", None) or []
     if not reads or not writes:
@@ -249,7 +249,7 @@ def _block_io_tensors(block: tir.Block) -> Optional[tuple[T.TensorInfo, T.Tensor
     output_buf = writes[0].buffer
     return _buffer_to_tensor_info(input_buf), _buffer_to_tensor_info(output_buf)
 
-def _block_concat_tensors(block: tir.Block) -> Optional[tuple[T.TensorInfo, T.TensorInfo, T.TensorInfo]]:
+def _block_concat_tensors(block: tir.SBlock) -> Optional[tuple[T.TensorInfo, T.TensorInfo, T.TensorInfo]]:
     reads = getattr(block, "reads", None) or []
     writes = getattr(block, "writes", None) or []
     if len(reads) < 2 or not writes:
@@ -353,9 +353,9 @@ def _try_convert_special_block_loop(
         loop_meta.append((cur.loop_var.name, extent))
         cur = cur.body
 
-    if isinstance(cur, tir.BlockRealize):
+    if isinstance(cur, tir.SBlockRealize):
         block = cur.block
-    elif isinstance(cur, tir.Block):
+    elif isinstance(cur, tir.SBlock):
         block = cur
     else:
         return None
@@ -466,7 +466,7 @@ def _try_convert_special_block_loop(
         return store_node
     return None
 
-def _try_convert_matmul_block(block: tir.Block, visit_expr) -> Optional[T.ASTNode]:
+def _try_convert_matmul_block(block: tir.SBlock, visit_expr) -> Optional[T.ASTNode]:
     if not isinstance(block.body, tir.BufferStore):
         return None
 
@@ -549,7 +549,7 @@ def _try_convert_matmul_block(block: tir.Block, visit_expr) -> Optional[T.ASTNod
     matmul_value = T.Matmul(lhs_load, rhs_load)
     return T.Store(out_tensor, T.Add(out_load_node, matmul_value), out_index)
 
-def _try_convert_arange_block(block: tir.Block) -> Optional[T.ASTNode]:
+def _try_convert_arange_block(block: tir.SBlock) -> Optional[T.ASTNode]:
     if not isinstance(block.body, tir.BufferStore):
         return None
 
@@ -624,7 +624,7 @@ def _find_reduce_axis_in_expr(expr: tir.PrimExpr, reduce_var: tir.Var) -> Option
     visit(expr)
     return axis_index
 
-def _try_convert_reducesum_block(block: tir.Block, visit_expr) -> Optional[T.ASTNode]:
+def _try_convert_reducesum_block(block: tir.SBlock, visit_expr) -> Optional[T.ASTNode]:
     if block.init is None:
         return None
     if not isinstance(block.body, tir.BufferStore):
@@ -633,7 +633,7 @@ def _try_convert_reducesum_block(block: tir.Block, visit_expr) -> Optional[T.AST
     let_bindings = _collect_let_bindings(block.body)
 
     init_store = block.init
-    if isinstance(init_store, tir.BlockRealize):
+    if isinstance(init_store, tir.SBlockRealize):
         init_store = init_store.block.body
     if isinstance(init_store, tir.SeqStmt):
         init_store = init_store.seq[0] if init_store.seq else None
@@ -709,7 +709,7 @@ def _try_convert_reducesum_block(block: tir.Block, visit_expr) -> Optional[T.AST
     out_load = T.Load(out_tensor, out_index)
     return T.Store(out_tensor, T.Add(out_load, reduce_value), out_index)
 
-def _try_convert_multi_reducesum_block(block: tir.Block, visit_expr) -> Optional[T.ASTNode]:
+def _try_convert_multi_reducesum_block(block: tir.SBlock, visit_expr) -> Optional[T.ASTNode]:
     if block.init is None:
         return None
 
@@ -726,7 +726,7 @@ def _try_convert_multi_reducesum_block(block: tir.Block, visit_expr) -> Optional
         return stores
 
     init_store = block.init
-    if isinstance(init_store, tir.BlockRealize):
+    if isinstance(init_store, tir.SBlockRealize):
         init_store = init_store.block.body
     init_stores = _collect_buffer_stores(init_store)
     if not init_stores:
@@ -811,7 +811,7 @@ def _try_convert_multi_reducesum_block(block: tir.Block, visit_expr) -> Optional
         return stores[0]
     return T.Block(stores)
 
-def _try_convert_reducemaxmin_block(block: tir.Block, visit_expr) -> Optional[T.ASTNode]:
+def _try_convert_reducemaxmin_block(block: tir.SBlock, visit_expr) -> Optional[T.ASTNode]:
     if block.init is None:
         return None
     if not isinstance(block.body, tir.BufferStore):
@@ -820,7 +820,7 @@ def _try_convert_reducemaxmin_block(block: tir.Block, visit_expr) -> Optional[T.
     let_bindings = _collect_let_bindings(block.body)
 
     init_store = block.init
-    if isinstance(init_store, tir.BlockRealize):
+    if isinstance(init_store, tir.SBlockRealize):
         init_store = init_store.block.body
     if isinstance(init_store, tir.SeqStmt):
         init_store = init_store.seq[0] if init_store.seq else None
@@ -900,7 +900,7 @@ def _try_convert_reducemaxmin_block(block: tir.Block, visit_expr) -> Optional[T.
         combine = T.GenericCall("min", [out_load_node, reduce_value])
     return T.Store(out_tensor, combine, out_index)
 
-def _try_convert_multi_reducemaxmin_block(block: tir.Block, visit_expr) -> Optional[T.ASTNode]:
+def _try_convert_multi_reducemaxmin_block(block: tir.SBlock, visit_expr) -> Optional[T.ASTNode]:
     if block.init is None:
         return None
 
@@ -917,7 +917,7 @@ def _try_convert_multi_reducemaxmin_block(block: tir.Block, visit_expr) -> Optio
         return stores
 
     init_store = block.init
-    if isinstance(init_store, tir.BlockRealize):
+    if isinstance(init_store, tir.SBlockRealize):
         init_store = init_store.block.body
     init_stores = _collect_buffer_stores(init_store)
     if not init_stores:
@@ -2030,10 +2030,10 @@ def _convert_to_ast(
             body_node = visit_stmt(stmt.body)
             return T.Loop(start, end, tile_name, loop_var, body_node)
 
-        elif isinstance(stmt, tir.BlockRealize):
+        elif isinstance(stmt, tir.SBlockRealize):
             return visit_stmt(stmt.block)
 
-        elif isinstance(stmt, tir.Block):
+        elif isinstance(stmt, tir.SBlock):
             arange_node = _try_convert_arange_block(stmt)
             if arange_node is not None:
                 if pattern_tracker is not None:
