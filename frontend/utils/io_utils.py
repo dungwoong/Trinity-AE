@@ -159,8 +159,12 @@ def export_main_func(
     output_dir: str,
     basename: str,
     fusion_groups=None,
+    flat_output: bool = False,
 ) -> None:
-    inner_output_dir = f"{output_dir}/trinity/{basename}"
+    if flat_output:
+        inner_output_dir = output_dir
+    else:
+        inner_output_dir = f"{output_dir}/trinity/{basename}"
     os.makedirs(inner_output_dir, exist_ok=True)
 
     main_path = f"{inner_output_dir}/main.txt"
