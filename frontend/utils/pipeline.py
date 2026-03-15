@@ -30,6 +30,7 @@ def export_model_ir(
     inline_elementwise_op: bool = True,
     remove_short_loop_threshold: int = 64,
     decompose_nested_op_ratio: float = 0.3,
+    flat_output: bool = False,
 ) -> tuple[T.MainFunc, list[str]]:
     """
     Convert a PyTorch model to Trinity IR and save artifacts under output_dir.
@@ -76,5 +77,5 @@ def export_model_ir(
     fusion_groups = plan_fusion_groups(main_func_ir)
     errors = validate_main_func_errors(main_func_ir, context=context or basename)
     errors.extend(validate_fusion_groups(main_func_ir, fusion_groups))
-    export_main_func(main_func_ir, output_dir, basename, fusion_groups=fusion_groups)
+    export_main_func(main_func_ir, output_dir, basename, fusion_groups=fusion_groups, flat_output=flat_output)
     return main_func_ir, errors

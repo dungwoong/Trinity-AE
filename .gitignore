@@ -210,3 +210,6 @@ __marimo__/
 frontend/outputs/
 optimizer/expressions/
 backend/profile_result/
+backend/codegen/triton_generator_backup/
+trinity_output_check/
+trinity_output/
