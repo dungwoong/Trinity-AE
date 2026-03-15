@@ -51,14 +51,27 @@ class IRBenchmark:
         self._temp_files = []
 
     def _load_shapes_json(self, file_path: str) -> Tuple[Dict[str, Tuple[int, ...]], Dict[str, str]]:
-        """Load tensor shapes and types from shapes.json."""
+        """Load tensor shapes and types from shapes.json.
+
+        Supports two formats:
+        1. Flat format (frontend-generated):
+           {"X": {"shape": [16, 4096], "type": "input"}, ...}
+        2. Nested format (backend shapes/):
+           {"config": {...}, "tensors": {"X": {"shape": [16, 4096], "type": "input"}, ...}}
+        """
         with open(file_path, 'r') as f:
             data = json.load(f)
+
+        # Check if nested format with "tensors" key
+        if "tensors" in data and isinstance(data["tensors"], dict):
+            tensor_data = data["tensors"]
+        else:
+            tensor_data = data
 
         tensor_shapes: Dict[str, Tuple[int, ...]] = {}
         tensor_types: Dict[str, str] = {}
 
-        for name, value in data.items():
+        for name, value in tensor_data.items():
             if isinstance(value, dict):
                 shape = value.get("shape")
                 tensor_type = value.get("type", "input")
@@ -89,22 +102,46 @@ class IRBenchmark:
     def create_test_tensors(self):
         """Create random test tensors for benchmarking."""
         self.tensors = {}
-        zero_init_types = {"output", "intermediate"}
-        softmax_maxelem_value = float(torch.finfo(torch.float16).min)
-
         for name, shape in self.tensor_shapes.items():
-            tensor_type = self.tensor_types.get(name, "input")
-            is_zero_init = tensor_type in zero_init_types
+            self.tensors[name] = self._allocate_tensor(name, torch.float16)
 
-            if "T_softmax_maxelem" in name:
-                self.tensors[name] = torch.full(
-                    shape, softmax_maxelem_value, dtype=torch.float16, device=self.device
-                )
+    def _tensor_dtype(self, name: str, fp32_tensor_names: Optional[set[str]] = None) -> torch.dtype:
+        if fp32_tensor_names and name in fp32_tensor_names:
+            return torch.float32
+        return torch.float16
+
+    def _allocate_tensor(self, name: str, dtype: torch.dtype) -> torch.Tensor:
+        shape = self.tensor_shapes[name]
+        tensor_type = self.tensor_types.get(name, "input")
+        zero_init_types = {"output", "intermediate"}
+
+        if "T_softmax_maxelem" in name:
+            return torch.full(
+                shape,
+                float(torch.finfo(dtype).min),
+                dtype=dtype,
+                device=self.device,
+            )
+        if tensor_type in zero_init_types:
+            return torch.zeros(shape, dtype=dtype, device=self.device)
+        return torch.randn(shape, dtype=dtype, device=self.device).clamp(-1, 1) * 0.01
+
+    def _ensure_tensor_storage(self, fp32_tensor_names: Optional[set[str]] = None) -> None:
+        fp32_tensor_names = fp32_tensor_names or set()
+        for name, shape in self.tensor_shapes.items():
+            expected_dtype = self._tensor_dtype(name, fp32_tensor_names)
+            tensor = self.tensors.get(name)
+
+            if tensor is None or tuple(tensor.shape) != tuple(shape):
+                self.tensors[name] = self._allocate_tensor(name, expected_dtype)
                 continue
-            if is_zero_init:
-                self.tensors[name] = torch.zeros(shape, dtype=torch.float16, device=self.device)
-            else:
-                self.tensors[name] = torch.randn(shape, dtype=torch.float16, device=self.device).clamp(-1, 1) * 0.01
+
+            if tensor.dtype != expected_dtype:
+                tensor_type = self.tensor_types.get(name, "input")
+                if tensor_type == "input":
+                    self.tensors[name] = tensor.to(dtype=expected_dtype)
+                else:
+                    self.tensors[name] = self._allocate_tensor(name, expected_dtype)
 
     def parse_ir_file(self, file_path: str) -> List[Tuple[int, str]]:
         """Parse the IR expressions file and extract all expressions."""
@@ -193,17 +230,20 @@ class IRBenchmark:
         try:
             # Get metadata and forward function
             tensor_params = getattr(kernel_module, 'TENSOR_PARAMS', [])
+            fp32_tensor_params = set(getattr(kernel_module, 'FP32_TENSOR_PARAMS', []))
             kernel_fn = kernel_module.forward
             
             if not tensor_params:
                 raise ValueError("No TENSOR_PARAMS found in kernel module.")
+
+            self._ensure_tensor_storage(fp32_tensor_params)
 
             # Reset output tensors before each benchmark
             for name in tensor_params:
                 if name in self.tensors and self.tensor_types.get(name) in {"output", "intermediate"}:
                     self.tensors[name].zero_()
                     if "T_softmax_maxelem" in name:
-                        self.tensors[name].fill_(float(torch.finfo(torch.float16).min))
+                        self.tensors[name].fill_(float(torch.finfo(self.tensors[name].dtype).min))
             
             # Build argument list based on metadata
             args = []
@@ -213,7 +253,10 @@ class IRBenchmark:
                 else:
                     # Create zero tensor if not exists (for intermediate tensors)
                     if param in self.tensor_shapes:
-                        args.append(torch.zeros(self.tensor_shapes[param], dtype=torch.float16, device=self.device))
+                        dtype = self._tensor_dtype(param, fp32_tensor_params)
+                        tensor = self._allocate_tensor(param, dtype)
+                        self.tensors[param] = tensor
+                        args.append(tensor)
                     else:
                         raise ValueError(f"Unknown tensor parameter: {param}")
             
