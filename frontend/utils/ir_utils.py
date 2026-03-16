@@ -1033,6 +1033,82 @@ def inline_shape_op_calls(main_func: T.MainFunc) -> T.MainFunc:
     def _has_tensor_load(node: T.ASTNode, tensor_name: str) -> bool:
         return tensor_name in _collect_load_tensor_names(node)
 
+    def _matmul_use_info(
+        node: T.ASTNode,
+        tensor_name: str,
+        in_matmul: bool = False,
+    ) -> tuple[bool, bool]:
+        if isinstance(node, T.Load) and node.tensor.name == tensor_name:
+            return True, in_matmul
+
+        next_in_matmul = in_matmul or isinstance(node, T.Matmul)
+
+        if isinstance(node, T.Store):
+            return _matmul_use_info(node.value, tensor_name, next_in_matmul)
+        if isinstance(node, T.Seq):
+            left_found, left_ok = _matmul_use_info(node.left, tensor_name, next_in_matmul)
+            right_found, right_ok = _matmul_use_info(node.right, tensor_name, next_in_matmul)
+            found = left_found or right_found
+            ok = (not left_found or left_ok) and (not right_found or right_ok)
+            return found, ok
+        if isinstance(node, T.Block):
+            found = False
+            ok = True
+            for stmt in node.stmts:
+                stmt_found, stmt_ok = _matmul_use_info(stmt, tensor_name, next_in_matmul)
+                found = found or stmt_found
+                ok = ok and (not stmt_found or stmt_ok)
+            return found, ok
+        if isinstance(node, T.Loop):
+            return _matmul_use_info(node.body, tensor_name, next_in_matmul)
+        if isinstance(node, T.If):
+            cond_found, cond_ok = _matmul_use_info(node.cond, tensor_name, next_in_matmul)
+            then_found, then_ok = _matmul_use_info(node.then_branch, tensor_name, next_in_matmul)
+            else_found, else_ok = (
+                _matmul_use_info(node.else_branch, tensor_name, next_in_matmul)
+                if node.else_branch
+                else (False, True)
+            )
+            found = cond_found or then_found or else_found
+            ok = (
+                (not cond_found or cond_ok)
+                and (not then_found or then_ok)
+                and (not else_found or else_ok)
+            )
+            return found, ok
+        if isinstance(node, T.Let):
+            value_found, value_ok = _matmul_use_info(node.value, tensor_name, next_in_matmul)
+            body_found, body_ok = _matmul_use_info(node.body, tensor_name, next_in_matmul)
+            found = value_found or body_found
+            ok = (not value_found or value_ok) and (not body_found or body_ok)
+            return found, ok
+
+        child_attrs = (
+            "left",
+            "right",
+            "val",
+            "a",
+            "b",
+            "data",
+            "indices",
+            "index",
+            "tensor",
+        )
+        found = False
+        ok = True
+        for attr in child_attrs:
+            child = getattr(node, attr, None)
+            if isinstance(child, T.ASTNode):
+                child_found, child_ok = _matmul_use_info(child, tensor_name, next_in_matmul)
+                found = found or child_found
+                ok = ok and (not child_found or child_ok)
+        if isinstance(node, T.GenericCall):
+            for arg in node.args:
+                arg_found, arg_ok = _matmul_use_info(arg, tensor_name, next_in_matmul)
+                found = found or arg_found
+                ok = ok and (not arg_found or arg_ok)
+        return found, ok
+
     i = 0
     while i < len(calls) - 1:
         call = calls[i]
@@ -1071,6 +1147,10 @@ def inline_shape_op_calls(main_func: T.MainFunc) -> T.MainFunc:
             uses = _has_tensor_load(call_j.primfunc.root_node, out_name)
             if not uses:
                 continue
+            if op_info["op"] in {"permute3", "transpose"}:
+                found_in_matmul, only_in_matmul = _matmul_use_info(call_j.primfunc.root_node, out_name)
+                if not found_in_matmul or not only_in_matmul:
+                    continue
             new_root = _inline_loads_with_op(call_j.primfunc.root_node, out_name, op_info)
             if new_root == call_j.primfunc.root_node:
                 continue

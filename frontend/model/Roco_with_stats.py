@@ -61,7 +61,7 @@ def build_model_and_inputs():
     M = 16
     H = 32
     D = 128
-    P = 528
+    P = 1040
 
     N = H * D
     X = torch.randn((M, N), device=device, dtype=dtype)
