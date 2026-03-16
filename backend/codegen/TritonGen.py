@@ -7,6 +7,7 @@ class TritonCodeGen:
     """Generate Triton code from IR AST"""
     
     def __init__(self):
+        self.debug_exp_detection = os.getenv("TRINITY_DEBUG_EXP_DETECTION", "").lower() in {"1", "true", "yes", "on"}
         self.tensor_shapes = {}  # tensor_name -> shape
         self.loop_vars = {}     # loop_var -> (start, end, tile_size, is_parallel)
         self.temp_counter = 0
@@ -3728,14 +3729,10 @@ def {kernel_name}(
 
         # If either operand is fp32, match types for tl.dot
         if left_is_fp32 or right_is_fp32 or (current_tensor and current_tensor in exp_tensors):
-            # At least one operand is fp32
-            if left_is_fp32 and not right_is_fp32:
-                # Left is fp32, convert right to fp32
-                right = f"{right}.to(tl.float32)"
-            elif right_is_fp32 and not left_is_fp32:
-                # Right is fp32, convert left to fp32
-                left = f"{left}.to(tl.float32)"
-            # If both are fp32 or both are fp16, no conversion needed
+            # Heuristics can misclassify an operand as "already fp32".
+            # In fp32 matmul contexts, force both sides to fp32 to avoid dtype mismatch.
+            left = f"({left}).to(tl.float32)"
+            right = f"({right}).to(tl.float32)"
             indent_str = '    ' * self.indent_level
             temp_var = f"temp_{self.temp_counter}"
             self.temp_counter += 1
@@ -4289,10 +4286,8 @@ def {kernel_name}(
                         f"left_expr={left_expr} right_expr={right_expr}"
                     )
                 if left_is_fp32 or right_is_fp32:
-                    if not left_is_fp32:
-                        left_expr = f"({left_expr}).to(tl.float32)"
-                    if not right_is_fp32:
-                        right_expr = f"({right_expr}).to(tl.float32)"
+                    left_expr = f"({left_expr}).to(tl.float32)"
+                    right_expr = f"({right_expr}).to(tl.float32)"
                     return f"tl.dot({left_expr}, {right_expr})"
                 return (
                     f"tl.dot(({left_expr}).to(tl.float16), "
