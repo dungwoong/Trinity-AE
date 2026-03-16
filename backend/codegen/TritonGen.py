@@ -4270,7 +4270,34 @@ def {kernel_name}(
                 right = node.children[1]
                 left_expr = self._generate_node_without_loads(left)
                 right_expr = self._generate_node_without_loads(right)
-                return f"tl.dot({left_expr}, {right_expr}).to(tl.float16)"
+                exp_tensors = getattr(self, 'exp_tensors', set())
+                current_tensor = getattr(self, 'current_store_tensor', None)
+                left_is_fp32 = (
+                    self._contains_exp_tensor_load(left, exp_tensors)
+                    or self._contains_exp_operation(left)
+                )
+                right_is_fp32 = (
+                    self._contains_exp_tensor_load(right, exp_tensors)
+                    or self._contains_exp_operation(right)
+                )
+                if self.debug_exp_detection:
+                    print(
+                        "[inline-matmul-dtype] "
+                        f"store={current_tensor} "
+                        f"left_type={left.node_type} right_type={right.node_type} "
+                        f"left_is_fp32={left_is_fp32} right_is_fp32={right_is_fp32} "
+                        f"left_expr={left_expr} right_expr={right_expr}"
+                    )
+                if left_is_fp32 or right_is_fp32:
+                    if not left_is_fp32:
+                        left_expr = f"({left_expr}).to(tl.float32)"
+                    if not right_is_fp32:
+                        right_expr = f"({right_expr}).to(tl.float32)"
+                    return f"tl.dot({left_expr}, {right_expr})"
+                return (
+                    f"tl.dot(({left_expr}).to(tl.float16), "
+                    f"({right_expr}).to(tl.float16)).to(tl.float16)"
+                )
         elif node.node_type == NodeType.RSUM:
             # Handle reduce sum specially
             child = node.children[0]
