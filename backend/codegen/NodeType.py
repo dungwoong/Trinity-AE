@@ -14,13 +14,21 @@ class NodeType(Enum):
     SEQ = "seq"
     ADD = "+"
     SUB = "-"
-    MUL = "x"
+    MUL = "*"
     DIV = "/"
-    MATMUL = "*"
+    LE = "<="
+    MATMUL = "@"
     EXP = "exp"
     SQR = "sqr"
     SQRT = "sqrt"
     SIGMOID = "sigmoid"
+    ERF = "erf"
+    CAST = "cast"
+    ABS = "abs"
+    MAX = "max"
+    MIN = "min"
+    RMAX = "rmax"
+    RMIN = "rmin"
     RSUM = "rsum"
     CONCAT = "concat"
     BCAST = "bcast"
@@ -28,6 +36,7 @@ class NodeType(Enum):
     VAR = "var"
     ELEM = "elem"  # Element-wise indexing
     PERMUTE3 = "permute3"  # 3D permutation
+    TRANSPOSE = "transpose"
     SQUEEZE = "squeeze"  # Remove dimension
     UNSQUEEZE = "unsqueeze"  # Add dimension
     CONST_TILE = "const_tile"  # Constant range tile [start:start+size]

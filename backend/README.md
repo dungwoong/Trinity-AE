@@ -10,21 +10,32 @@ Trinity Backend converts optimized IR expressions from the optimizer into execut
 
 ```
 backend/
-├── codegen/                # Triton code generation
-│   ├── TritonGen.py        # Main Triton code generator
-│   ├── IrParser.py         # IR expression parser
-│   ├── AstNode.py          # AST node definitions
-│   └── NodeType.py         # Node type enums
-├── evaluation/             # IR list & profiled results
-├── figure67/               # Data for figure6 & 7
-├── scripts/                # Evaluation scripts
-│   ├── evaluate_all.sh     # Run all benchmarks
+├── codegen/                    # Triton code generation
+│   ├── __init__.py             # Exports TritonCodeGen, convert_ir_to_triton
+│   ├── convert_module.py       # Public API: convert_ir_to_triton()
+│   ├── TritonGen.py            # Mediator assembling generator components
+│   ├── IrParser.py             # IR expression parser
+│   ├── AstNode.py              # AST node definitions
+│   ├── NodeType.py             # Node type enums
+│   └── triton_generator/       # Modular code generation components
+│       ├── state.py            # Shared mutable state (CodeGenState)
+│       ├── shape_utils.py      # Shape/constant resolution
+│       ├── kernel.py           # Kernel signature & autotune
+│       ├── analysis/           # AST analysis (tensors, deps, accumulators)
+│       ├── codegen/            # Triton code emission (loops, memory, math, etc.)
+│       └── pipeline/           # Generation pipeline (single/sequential kernels)
+├── evaluation/                 # IR list & profiled results
+├── figure67/                   # Data for figure6 & 7
+├── scripts/                    # Evaluation scripts
+│   ├── evaluate_all.sh         # Run all benchmarks
 │   └── evaluate67.sh
-├── profile/                # Profile IR list & find optimal
-├── results/                # Generated benchmark results
-├── run_eval.py             # Main evaluation entry point
-├── baselines.py            # Baseline implementations
-└── format.py               # Output formatting utilities
+├── profile/                    # Profile IR list & find optimal
+│   ├── benchmark.py            # Unified benchmark framework
+│   └── shapes/                 # Tensor shape configs (JSON per model/method)
+├── results/                    # Generated benchmark results
+├── run_eval.py                 # Main evaluation entry point
+├── baselines.py                # Baseline implementations
+└── format.py                   # Output formatting utilities
 ```
 
 ## Requirements
@@ -65,17 +76,19 @@ python run_figures67.py [options]
 
 ## IR List Profiling
 
-Profile multiple IR expressions from a file to find the best performing kernels. Pre-generated IR expression files from the optimizer are available in `evaluation/{architecture}/` for each architecture and model.
+Profile multiple IR expressions from a file to find the best performing kernels. Pre-generated IR expression files from the optimizer are available in `evaluation/{architecture}/` for each architecture and model. Tensor shapes for each model/method configuration are defined in `profile/shapes/{method}_{model}.json`.
 
 ### Usage
 ```bash
-python profile/{method}_{model}_benchmark.py [options]
+python -m profile.benchmark [options]
 
 # Options:
+#   --ir      : Path to the IR expressions file
+#   --shapes  : Path to shapes.json for tensor shapes (required)
 #   --start   : Start from specific test case ID (default: 0)
 #   --num     : Number of expressions to benchmark (default: 10)
 #   --end     : Run from start ID to the last test case
-#   --device  : CUDA device number (default: 0)
+#   --output  : Path to save benchmark results (default: ./profile_result/benchmark.json)
 #   --topk    : Number of top kernels to report (default: 5)
 #   --all     : Profiling all cases in the IR expressions file
 ```
@@ -83,17 +96,17 @@ python profile/{method}_{model}_benchmark.py [options]
 ### Examples
 ```bash
 # Profile 512 IR expressions starting from ID 0
-python profile/vanilla_llama_benchmark.py --num 512 --device 0
+python -m profile.benchmark --ir evaluation/vanilla/vanilla_llama_cost6_kern1.txt --shapes profile/shapes/vanilla_llama.json --num 512
 
 # Profile from ID 500 to the end
-python profile/ffn_falcon_benchmark.py --start 500 --end --device 1
+python -m profile.benchmark --ir evaluation/ffn/falcon_ffn_cost6_kern5_wo_scheduler2.txt --shapes profile/shapes/ffn_falcon.json --start 500 --end
 
 # Profile all IR expressions
 # Please use this command to find the best IR
-python profile/prenorm_llama_benchmark.py --all
+python -m profile.benchmark --ir evaluation/prenorm/falcon_ffn_cost6_kern5_wo_scheduler2.txt --shapes profile/shapes/prenorm_llama.json --all
 ```
 
-- You can check top-k kernel result in `{method}_{model}_{topk}.json` in `evaluation` directory.
+- You can check top-k kernel result in the output JSON file (default: `./profile_result/benchmark.json`).
 
 ### Convert IR to Triton and Run Benchmark
 

@@ -1,7 +1,3 @@
-import sys
-import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import torch
 import triton
 import time
@@ -9,6 +5,8 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 import tempfile
 import importlib.util
+import sys
+import os
 import shutil
 import traceback
 from dataclasses import dataclass
@@ -16,108 +14,31 @@ from tqdm import tqdm
 import json
 import argparse
 
-from codegen.convert_module import convert_ir_to_triton
+try:
+    # When running from repo root with -m backend.profile.benchmark
+    from backend.codegen.convert_module import convert_ir_to_triton
+except ModuleNotFoundError:
+    # When running from backend/ with -m profile.benchmark
+    from codegen.convert_module import convert_ir_to_triton
+
 
 @dataclass
 class BenchmarkResult:
     ir_id: int
     ir_expression: str
     execution_time: float
-    tensor_config: Dict[str, int]
     error: Optional[str] = None
-    
-    
-class LlamaVanillaBench:
-    def __init__(self, tensor_config: Dict[str, int], device):
-        """Initialize benchmark with given tensor configuration."""
-        # Extract dimensions from config
-        self.M = tensor_config['M']
-        self.N = tensor_config['N']
-        self.D = tensor_config['D']
-        self.H = tensor_config['H']
-        self.P = tensor_config['P']
-        
-        # Store the config
-        self.tensor_config = tensor_config
-        
-        self.tensor_shapes = {
-            'X': (self.M, self.N),
-            'X2': (self.M, ),
-            'X_norm': (self.M, self.N),
-            
-            'WQ': (self.N, self.N),
-            'WK': (self.N, self.N),
-            'WV': (self.N, self.N),
 
-            'Q': (self.H, self.M, self.D),
-            'K': (self.H, self.M, self.D),
-            'V': (self.H, self.M, self.D),
 
-            'Q1': (self.M, self.N),
-            'K1': (self.M, self.N),
-            'V1': (self.M, self.N),
-
-            'Q2': (self.M, self.H, self.D),
-            'K2': (self.M, self.H, self.D),
-            'V2': (self.M, self.H, self.D),
-
-            'K_cache': (self.H, self.P + self.M, self.D),
-            'V_cache': (self.H, self.P + self.M, self.D),
-
-            'K': (self.H, self.M, self.D),
-            'V': (self.H, self.M, self.D),
-
-            'O': (self.H, self.M, self.D),
-            'O1': (self.M, self.H, self.D),
-            'O2': (self.M, self.N),
-
-            'C': (self.H, self.M, self.P),
-            'C_exp': (self.H, self.M, self.P+self.M),
-            'C_div': (self.H, self.M, self.P+self.M),
-            'C_sum': (self.H, self.M)
-        }
-        
-        self.shape_dict = {
-            'X': ('M', 'N'),
-            'X2': ('M', ),
-            'X_norm': ('M', 'N'),
-            
-            'WQ': ('N', 'N'),
-            'WK': ('N', 'N'),
-            'WV': ('N', 'N'),
-
-            'Q': ('H', 'M', 'D'),
-            'K': ('H', 'M', 'D'),
-            'V': ('H', 'M', 'D'),
-
-            'Q1': ('M', 'N'),
-            'K1': ('M', 'N'),
-            'V1': ('M', 'N'),
-
-            'Q2': ('M', 'H', 'D'),
-            'K2': ('M', 'H', 'D'),
-            'V2': ('M', 'H', 'D'),
-
-            'K_cache': ('H', 'P+M', 'D'),
-            'V_cache': ('H', 'P+M', 'D'),
-
-            'K': ('H', 'M', 'D'),
-            'V': ('H', 'M', 'D'),
-
-            'O': ('H', 'M', 'D'),
-            'O1': ('M', 'H', 'D'),
-            'O2': ('M', 'N'),
-
-            'C': ('H', 'M', 'P'),
-            'C_exp': ('H', 'M', 'P+M'),
-            'C_div': ('H', 'M', 'P+M'),
-            'C_sum': ('H', 'M')
-        }
-
-        self.const_dict = tensor_config.copy()
+class IRBenchmark:
+    def __init__(self, shapes_path: str):
+        """Initialize benchmark with shapes.json."""
+        self.tensor_types: Dict[str, str] = {}
+        self.tensor_shapes, self.tensor_types = self._load_shapes_json(shapes_path)
+        self.shapes_path = shapes_path
 
         # Setup device
-        self.device = torch.device(f'cuda:{device}' if torch.cuda.is_available() else 'cpu')
+        self.device = torch.device('cuda:2' if torch.cuda.is_available() else 'cpu')
         torch.cuda.set_device(self.device)
         print(f"GPU: {torch.cuda.get_device_name(self.device)}")
         # if self.device.type != 'cuda':
@@ -128,19 +49,100 @@ class LlamaVanillaBench:
         
         # Track temp files for cleanup
         self._temp_files = []
-        
+
+    def _load_shapes_json(self, file_path: str) -> Tuple[Dict[str, Tuple[int, ...]], Dict[str, str]]:
+        """Load tensor shapes and types from shapes.json.
+
+        Supports two formats:
+        1. Flat format (frontend-generated):
+           {"X": {"shape": [16, 4096], "type": "input"}, ...}
+        2. Nested format (backend shapes/):
+           {"config": {...}, "tensors": {"X": {"shape": [16, 4096], "type": "input"}, ...}}
+        """
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+
+        # Check if nested format with "tensors" key
+        if "tensors" in data and isinstance(data["tensors"], dict):
+            tensor_data = data["tensors"]
+        else:
+            tensor_data = data
+
+        tensor_shapes: Dict[str, Tuple[int, ...]] = {}
+        tensor_types: Dict[str, str] = {}
+
+        for name, value in tensor_data.items():
+            if isinstance(value, dict):
+                shape = value.get("shape")
+                tensor_type = value.get("type", "input")
+            else:
+                shape = value
+                tensor_type = "input"
+
+            if not isinstance(shape, list):
+                continue
+
+            dims = []
+            valid = True
+            for dim in shape:
+                if isinstance(dim, int):
+                    dims.append(dim)
+                else:
+                    valid = False
+                    break
+
+            if not valid:
+                continue
+
+            tensor_shapes[name] = tuple(dims)
+            tensor_types[name] = tensor_type
+
+        return tensor_shapes, tensor_types
+
     def create_test_tensors(self):
         """Create random test tensors for benchmarking."""
         self.tensors = {}
         for name, shape in self.tensor_shapes.items():
-            if name in ['C', 'C_sum', 'K', 'K1', 'K2', 'O', 'O1', 'Q', 'Q1', 'Q2', 'V', 'V1', 'V2']:  # Output and intermediate tensors
-                # Initialize to zero since they're used as accumulators or outputs
-                self.tensors[name] = torch.zeros(shape, dtype=torch.float16, device=self.device)
-            elif name in ['C_exp', 'C_div']:
-                self.tensors[name] = torch.zeros(shape, dtype=torch.float32, device=self.device)
-            else:  # Input tensors
-                self.tensors[name] = torch.randn(shape, dtype=torch.float16, device=self.device).clamp(-1, 1)*0.01
-    
+            self.tensors[name] = self._allocate_tensor(name, torch.float16)
+
+    def _tensor_dtype(self, name: str, fp32_tensor_names: Optional[set[str]] = None) -> torch.dtype:
+        if fp32_tensor_names and name in fp32_tensor_names:
+            return torch.float32
+        return torch.float16
+
+    def _allocate_tensor(self, name: str, dtype: torch.dtype) -> torch.Tensor:
+        shape = self.tensor_shapes[name]
+        tensor_type = self.tensor_types.get(name, "input")
+        zero_init_types = {"output", "intermediate"}
+
+        if "T_softmax_maxelem" in name:
+            return torch.full(
+                shape,
+                float(torch.finfo(dtype).min),
+                dtype=dtype,
+                device=self.device,
+            )
+        if tensor_type in zero_init_types:
+            return torch.zeros(shape, dtype=dtype, device=self.device)
+        return torch.randn(shape, dtype=dtype, device=self.device).clamp(-1, 1) * 0.01
+
+    def _ensure_tensor_storage(self, fp32_tensor_names: Optional[set[str]] = None) -> None:
+        fp32_tensor_names = fp32_tensor_names or set()
+        for name, shape in self.tensor_shapes.items():
+            expected_dtype = self._tensor_dtype(name, fp32_tensor_names)
+            tensor = self.tensors.get(name)
+
+            if tensor is None or tuple(tensor.shape) != tuple(shape):
+                self.tensors[name] = self._allocate_tensor(name, expected_dtype)
+                continue
+
+            if tensor.dtype != expected_dtype:
+                tensor_type = self.tensor_types.get(name, "input")
+                if tensor_type == "input":
+                    self.tensors[name] = tensor.to(dtype=expected_dtype)
+                else:
+                    self.tensors[name] = self._allocate_tensor(name, expected_dtype)
+
     def parse_ir_file(self, file_path: str) -> List[Tuple[int, str]]:
         """Parse the IR expressions file and extract all expressions."""
         expressions = []
@@ -162,7 +164,7 @@ class LlamaVanillaBench:
                             continue
                             
         return expressions
-    
+
     def generate_kernel_code(self, ir_expr: str, constants: Dict[str, int] = None) -> Optional[str]:
         """Generate Triton kernel code from IR expression.
         
@@ -171,7 +173,7 @@ class LlamaVanillaBench:
             constants: Optional mapping of variable names to constant values
         """
         try:
-            kernel_code = convert_ir_to_triton(ir_expr, self.shape_dict, self.const_dict)
+            kernel_code = convert_ir_to_triton(ir_expr, self.tensor_shapes, None)
 
             return kernel_code
             
@@ -179,7 +181,7 @@ class LlamaVanillaBench:
             print(f"Error generating kernel: {e}")
             traceback.print_exc()
             return None
-    
+
     def compile_and_load_kernel(self, kernel_code: str, kernel_id: int) -> Optional[callable]:
         """Compile Triton kernel code and return callable function."""
         try:
@@ -222,25 +224,26 @@ class LlamaVanillaBench:
                     print(f.read())
                 os.unlink(temp_file)
             return None
-    
+
     def benchmark_kernel(self, kernel_module, ir_id, warmup_runs: int = 10, benchmark_runs: int = 100) -> float:
         """Benchmark a single kernel and return execution time in milliseconds."""
         try:
             # Get metadata and forward function
-            tensor_params = getattr(kernel_module, 'TENSOR_PARAMS', ['K1', 'V1', 'Q1', 
-                                                                     'K2', 'V2', 'Q2', 
-                                                                     'K', 'V', 'Q',
-                                                                     'WK', 'WV', 'WQ',
-                                                                     'K_cache', 'V_cache',
-                                                                     'C', 'C_sum',
-                                                                     'X', 'O', 'O1', 'O2'])
+            tensor_params = getattr(kernel_module, 'TENSOR_PARAMS', [])
+            fp32_tensor_params = set(getattr(kernel_module, 'FP32_TENSOR_PARAMS', []))
             kernel_fn = kernel_module.forward
             
-            # Reset output tensor to zero for each benchmark
-            for name in ['O2', 'Q1', 'K1', 'V1', 'Q2', 'K2', 'V2', 'Q', 'K', 'V',
-               'C', 'C_exp', 'C_sum', 'C_div', 'O', 'O1', 'X2', 'X_norm']:
-                if name in self.tensors:
+            if not tensor_params:
+                raise ValueError("No TENSOR_PARAMS found in kernel module.")
+
+            self._ensure_tensor_storage(fp32_tensor_params)
+
+            # Reset output tensors before each benchmark
+            for name in tensor_params:
+                if name in self.tensors and self.tensor_types.get(name) in {"output", "intermediate"}:
                     self.tensors[name].zero_()
+                    if "T_softmax_maxelem" in name:
+                        self.tensors[name].fill_(float(torch.finfo(self.tensors[name].dtype).min))
             
             # Build argument list based on metadata
             args = []
@@ -250,31 +253,42 @@ class LlamaVanillaBench:
                 else:
                     # Create zero tensor if not exists (for intermediate tensors)
                     if param in self.tensor_shapes:
-                        args.append(torch.zeros(self.tensor_shapes[param], dtype=torch.float16, device=self.device))
+                        dtype = self._tensor_dtype(param, fp32_tensor_params)
+                        tensor = self._allocate_tensor(param, dtype)
+                        self.tensors[param] = tensor
+                        args.append(tensor)
                     else:
                         raise ValueError(f"Unknown tensor parameter: {param}")
             
+            stream = torch.cuda.Stream(self.device)
             # First call to trigger autotune (not counted in warmup)
             kernel_fn(*args)
             torch.cuda.synchronize()
+            
+            # Triton Warmup - now using the best configuration from autotune
+            with torch.cuda.stream(stream):
+                for _ in range(warmup_runs):
+                    kernel_fn(*args)
+            stream.synchronize()
 
-            # To see autotune results, run with:
-            # TRITON_PRINT_AUTOTUNING=1 python ffn_benchmark.py
-
-            # Warmup runs - now using the best configuration from autotune
-            for _ in range(warmup_runs):
-                kernel_fn(*args)
-            torch.cuda.synchronize()
-
+            # CUDA Graph Warmup
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.stream(stream):
+                with torch.cuda.graph(graph, stream=stream):
+                    kernel_fn(*args)
+            # Synchronize before timing
+            stream.synchronize()
+            
             # Benchmark runs
             start_event = torch.cuda.Event(enable_timing=True)
             end_event = torch.cuda.Event(enable_timing=True)
 
-            start_event.record()
-            for _ in range(benchmark_runs):
-                kernel_fn(*args)
-            end_event.record()
-            torch.cuda.synchronize()
+            with torch.cuda.stream(stream):
+                start_event.record()
+                for _ in range(benchmark_runs):
+                    graph.replay()
+                end_event.record()
+            stream.synchronize()
             
             # Return average time in milliseconds
             avg_time = (start_event.elapsed_time(end_event)) / benchmark_runs
@@ -283,21 +297,20 @@ class LlamaVanillaBench:
         except Exception as e:
             print(f"Error benchmarking kernel: {e}")
             traceback.print_exc()
-            # Re-raise to let the caller handle it
             raise
-    
+
     def run_single_benchmark(self, ir_id: int, ir_expr: str) -> BenchmarkResult:
         """Run benchmark for a single IR expression."""
         try:
             # Generate kernel code
             kernel_code = self.generate_kernel_code(ir_expr)
             if kernel_code is None:
-                return BenchmarkResult(ir_id, ir_expr, float('inf'), self.tensor_config, "Failed to generate kernel")
+                return BenchmarkResult(ir_id, ir_expr, float('inf'), "Failed to generate kernel")
             
             # Compile kernel
             kernel_module = self.compile_and_load_kernel(kernel_code, ir_id)
             if kernel_module is None:
-                return BenchmarkResult(ir_id, ir_expr, float('inf'), self.tensor_config, "Failed to compile kernel")
+                return BenchmarkResult(ir_id, ir_expr, float('inf'), "Failed to compile kernel")
             
             # Benchmark kernel
             exec_time = self.benchmark_kernel(kernel_module=kernel_module, ir_id=ir_id)
@@ -310,13 +323,13 @@ class LlamaVanillaBench:
             if module_name in sys.modules:
                 del sys.modules[module_name]
             
-            return BenchmarkResult(ir_id, ir_expr, exec_time, self.tensor_config)
+            return BenchmarkResult(ir_id, ir_expr, exec_time)
             
         except Exception as e:
             # Clean up GPU memory even on error
             self.cleanup_gpu()
-            return BenchmarkResult(ir_id, ir_expr, float('inf'), self.tensor_config, str(e))
-    
+            return BenchmarkResult(ir_id, ir_expr, float('inf'), str(e))
+
     def run_all_benchmarks(self, ir_file: str, min_expressions: Optional[int], num: Optional[int] = None) -> List[BenchmarkResult]:
         """Run benchmarks for all IR expressions in the file."""
         # Parse IR expressions
@@ -351,17 +364,7 @@ class LlamaVanillaBench:
                     pbar.set_postfix(valid=valid_so_far, errors=len(results)-valid_so_far)
 
         return results
-    
-    def find_best_kernels(self, results: List[BenchmarkResult], top_k: int = 10) -> List[BenchmarkResult]:
-        """Find the top-k fastest kernels."""
-        # Filter out failed kernels
-        valid_results = [r for r in results if r.error is None and r.execution_time != float('inf')]
-        
-        # Sort by execution time
-        valid_results.sort(key=lambda x: x.execution_time)
-        
-        return valid_results[:top_k]
-    
+
     def save_results(self, results: List[BenchmarkResult], output_file: str):
         """Save benchmark results to a JSON file."""
         data = []
@@ -370,13 +373,12 @@ class LlamaVanillaBench:
                 'ir_id': r.ir_id,
                 'ir_expression': r.ir_expression,
                 'execution_time_ms': r.execution_time,
-                'tensor_config': r.tensor_config,
                 'error': r.error
             })
         
         with open(output_file, 'w') as f:
             json.dump(data, f, indent=2)
-    
+
     def cleanup_gpu(self):
         """Clean up GPU memory and reset CUDA context."""
         try:
@@ -405,7 +407,29 @@ class LlamaVanillaBench:
             
         except Exception as e:
             print(f"Warning: GPU cleanup failed: {e}")
-    
+
+    def clear_triton_cache(self):
+        """Clear Triton's cache directory to free up disk space."""
+        try:
+            # Get Triton cache directory
+            triton_cache_dir = os.path.expanduser("~/.triton/cache")
+            
+            if os.path.exists(triton_cache_dir):
+                # Remove all files and subdirectories in the cache
+                for item in os.listdir(triton_cache_dir):
+                    item_path = os.path.join(triton_cache_dir, item)
+                    if os.path.isdir(item_path):
+                        shutil.rmtree(item_path)
+                    else:
+                        os.remove(item_path)
+                
+                print(f"  Successfully cleared Triton cache at {triton_cache_dir}")
+            else:
+                print(f"  Triton cache directory not found at {triton_cache_dir}")
+                
+        except Exception as e:
+            print(f"  Warning: Failed to clear Triton cache: {e}")
+
     def cleanup(self):
         """Clean up temporary files."""
         for temp_file in self._temp_files:
@@ -416,54 +440,55 @@ class LlamaVanillaBench:
                 pass
         self._temp_files = []
 
-def run_comprehensive_benchmark(tensor_configs, ir_file, start_expressions, num_expressions, top_k, output_file, device):
-    """Run benchmarks for all tensor shape configurations."""
+
+def run_comprehensive_benchmark(shapes_path, ir_file, start_expressions, num_expressions, output_file):
+    """Run benchmarks for shapes.json."""
     all_results = []
     benchmark_instances = []
 
     print(f"Running comprehensive benchmark with:")
-    print(f"  - {len(tensor_configs)} tensor configurations")
+    print(f"  - shapes={shapes_path}")
     print()
     
+    output_dir = os.path.dirname(output_file)
+    if output_dir:
+        os.makedirs(output_dir, exist_ok=True)
+
     # Initialize output file with empty list
     with open(output_file, 'w') as f:
         json.dump([], f)
     
-    for tensor_idx, tensor_config in enumerate(tensor_configs):
-        print(f"\nTensor Configuration {tensor_idx + 1}/{len(tensor_configs)}: M={tensor_config['M']}, N={tensor_config['N']}")
+    benchmark = IRBenchmark(shapes_path=shapes_path)
+    benchmark_instances.append(benchmark)
+    
+    try:
+        # Run benchmarks for this tensor configuration
+        results = benchmark.run_all_benchmarks(ir_file, min_expressions=start_expressions, num=num_expressions)
         
-        # Initialize benchmark with this tensor configuration
-        benchmark = LlamaVanillaBench(tensor_config, device)
-        benchmark_instances.append(benchmark)
+        # Store results with configuration info
+        config_results = {
+            'shapes_path': shapes_path,
+            'results': results
+        }
+        all_results.append(config_results)
         
-        try:
-            # Run benchmarks for this tensor configuration
-            results = benchmark.run_all_benchmarks(ir_file, min_expressions=start_expressions, num=num_expressions)
-            
-            # Store results with configuration info
-            config_results = {
-                'tensor_config': tensor_config,
-                'results': results
-            }
-            all_results.append(config_results)
-            
-            # Save results incrementally
-            save_incremental_results(config_results, output_file)
-            print(f"  Saved results for configuration {tensor_idx + 1}/{len(tensor_configs)}")
-            
-        except Exception as e:
-            print(f"  Error in configuration: {str(e)}")
-            # Save error information
-            error_result = {
-                'tensor_config': tensor_config,
-                'error': str(e),
-                'results': []
-            }
-            all_results.append(error_result)
-            save_incremental_results(error_result, output_file)
+        # Save results incrementally
+        save_incremental_results(config_results, output_file)
+        print("  Saved results")
         
-        # Clean up after each tensor configuration
-        benchmark.cleanup()
+    except Exception as e:
+        print(f"  Error in configuration: {str(e)}")
+        # Save error information
+        error_result = {
+            'shapes_path': shapes_path,
+            'error': str(e),
+            'results': []
+        }
+        all_results.append(error_result)
+        save_incremental_results(error_result, output_file)
+    
+    # Clean up after each tensor configuration
+    benchmark.cleanup()
     
     return all_results, benchmark_instances
 
@@ -481,7 +506,7 @@ def save_incremental_results(config_results, output_file):
     if 'error' in config_results and config_results['error']:
         # Handle error case
         existing_data.append({
-            'tensor_config': config_results['tensor_config'],
+            'shapes_path': config_results.get('shapes_path'),
             'error': config_results['error'],
             'results': []
         })
@@ -492,7 +517,7 @@ def save_incremental_results(config_results, output_file):
                 'ir_id': result.ir_id,
                 'ir_expression': result.ir_expression,
                 'execution_time_ms': result.execution_time,
-                'tensor_config': result.tensor_config,
+                'shapes_path': config_results.get('shapes_path'),
                 'error': result.error
             })
     
@@ -501,45 +526,19 @@ def save_incremental_results(config_results, output_file):
         json.dump(existing_data, f, indent=2)
 
 
-def save_comprehensive_results(all_results, output_file):
-    """Save all benchmark results with configuration details."""
-    data = []
-    
-    for config_result in all_results:
-        if 'error' in config_result and config_result['error']:
-            # Handle error case
-            data.append({
-                'tensor_config': config_result['tensor_config'],
-                'error': config_result['error'],
-                'results': []
-            })
-        else:
-            for result in config_result['results']:
-                data.append({
-                    'ir_id': result.ir_id,
-                    'ir_expression': result.ir_expression,
-                    'execution_time_ms': result.execution_time,
-                    'tensor_config': result.tensor_config,
-                    'error': result.error
-                })
-    
-    with open(output_file, 'w') as f:
-        json.dump(data, f, indent=2)
-
-
 def print_comprehensive_report(all_results, top_k):
     """Print comprehensive report showing best kernels for each configuration."""
-    print("\n" + "="*100)
+    print("\n" + "=" * 100)
     print("COMPREHENSIVE BENCHMARK REPORT")
-    print("="*100)
+    print("=" * 100)
     
     # Group results by configuration
     for config_idx, config_result in enumerate(all_results):
-        tensor_config = config_result['tensor_config']
         results = config_result['results']
         
         print(f"\nConfiguration {config_idx + 1}:")
-        print(f"  Tensor Shape: M={tensor_config['M']}, N={tensor_config['N']}")
+        if "shapes_path" in config_result:
+            print(f"  Shapes: {config_result['shapes_path']}")
         
         # Find best kernels for this configuration
         valid_results = [r for r in results if r.error is None and r.execution_time != float('inf')]
@@ -549,73 +548,29 @@ def print_comprehensive_report(all_results, top_k):
         if best_kernels:
             print(f"  Top {min(len(best_kernels), top_k)} kernels:")
             for i, result in enumerate(best_kernels):
-                print(f"    {i+1}. IR {result.ir_id}: {result.execution_time:.4f} ms")
+                print(f"    {i + 1}. IR {result.ir_id}: {result.execution_time:.4f} ms")
                 if i == 0:  # Show expression for best kernel only
                     print(f"       Expression: {result.ir_expression[:80]}...")
         else:
             print("  No valid kernels found for this configuration")
-    
-    # Overall best across all configurations
-    print("\n" + "="*100)
-    print("OVERALL BEST KERNELS ACROSS ALL CONFIGURATIONS")
-    print("="*100)
-    
-    # Flatten all results
-    all_valid_results = []
-    for config_result in all_results:
-        valid_results = [r for r in config_result['results'] if r.error is None and r.execution_time != float('inf')]
-        all_valid_results.extend(valid_results)
-    
-    all_valid_results.sort(key=lambda x: x.execution_time)
-    overall_best = all_valid_results[:top_k]
-    
-    for i, result in enumerate(overall_best):
-        print(f"\n{i+1}. IR {result.ir_id}: {result.execution_time:.4f} ms")
-        print(f"   Tensor Config: M={result.tensor_config['M']}, N={result.tensor_config['N']}")
-        print(f"   Expression: {result.ir_expression[:100]}...")
 
-    return overall_best
-
-def save_top_k_results(top_results, output_file):
-    """Save top k results to a JSON file."""
-    data = []
-    for rank, result in enumerate(top_results, 1):
-        data.append({
-            'rank': rank,
-            'ir_id': result.ir_id,
-            'execution_time_ms': result.execution_time,
-            'tensor_config': result.tensor_config,
-            'ir_expression': result.ir_expression
-        })
-
-    with open(output_file, 'w') as f:
-        json.dump(data, f, indent=2)
-
-    print(f"\nTop {len(data)} results saved to: {output_file}")
 
 def main():
-    """Main function to run Attacc IR benchmarks."""
-    # Configuration
-    IR_FILE = "./evaluation/vanilla/vanilla_llama_cost6_kern1.txt"
-    OUTPUT_FILE = "./evaluation/vanilla/vanilla_llama.json"
-    MODEL_CONFIG_FILE = "./model_configs.json"
+    """Main function to run IR benchmarks."""
+    OUTPUT_FILE = "./profile_result/benchmark.json"
     START_EXPRESSIONS = 0
-    NUM_EXPRESSIONS = 10  # Reduced for testing multiple configurations
-    TOP_K = 5  # Number of best kernels to report
+    NUM_EXPRESSIONS = 10
+    TOP_K = 5
 
-    with open(MODEL_CONFIG_FILE, 'r') as f:
-        model_configs = json.load(f)
-    TENSOR_CONFIGS = [model_configs['llama']]
-
-    parser = argparse.ArgumentParser(description="Run comprehensive Attacc IR benchmarks")
-    parser.add_argument('--ir', type=str, default=IR_FILE, help="Path to the IR expressions file")
+    parser = argparse.ArgumentParser(description="Run IR benchmarks")
+    parser.add_argument('--ir', type=str, help="Path to the IR expressions file")
     parser.add_argument('--output', type=str, default=OUTPUT_FILE, help="Path to save benchmark results")
-    parser.add_argument('--start', type=int, default=START_EXPRESSIONS, help="Start from test case ID (e.g., 1881)")
-    parser.add_argument('--device', type=int, default=0, help="Type device number")
+    parser.add_argument('--start', type=int, default=START_EXPRESSIONS, help="Start from test case ID")
     parser.add_argument('--num', type=int, default=NUM_EXPRESSIONS, help="Number of expressions to benchmark")
     parser.add_argument('--end', action='store_true', help="Run from start ID to the last test case")
     parser.add_argument('--topk', type=int, default=TOP_K, help="Number of top kernels to report")
     parser.add_argument('--all', action='store_true', help="Run all configurations comprehensively")
+    parser.add_argument('--shapes', type=str, required=True, help="Path to shapes.json for tensor shapes")
 
     args = parser.parse_args()
     
@@ -629,37 +584,30 @@ def main():
         with open(args.ir, 'r') as f:
             total_expressions = len(f.readlines())
     elif args.end:
-        # When using --end, we don't limit the number, just filter by start ID
-        # The actual filtering happens in run_all_benchmarks based on ir_id
         total_expressions = None  # None means no limit
     else:
         total_expressions = args.num
-    
+
+    shapes_path = args.shapes
+
     # Check CUDA availability
     if not torch.cuda.is_available():
         print("Error: CUDA device not available. Triton requires CUDA.")
         return
     
-    # Run comprehensive benchmarks
-    print("Starting comprehensive Attacc benchmarks...")
-    all_results, benchmark_instances = run_comprehensive_benchmark(
-        TENSOR_CONFIGS, 
-        args.ir, 
-        args.start, 
-        total_expressions, 
-        args.topk,
-        args.output,  # Pass output file for incremental saving
-        args.device
+    # Run benchmarks
+    print("Starting IR benchmarks...")
+    all_results, _ = run_comprehensive_benchmark(
+        shapes_path,
+        args.ir,
+        args.start,
+        total_expressions,
+        args.output
     )
     
-    # Results are already saved incrementally, but save again for completeness
-    # save_comprehensive_results(all_results, args.output)
     print(f"\nAll results saved to: {args.output}")
-    
-    # Print comprehensive report
-    final_result = print_comprehensive_report(all_results, args.topk)
-    final_output = args.output.replace('.json', f'_top{args.topk}.json')
-    save_top_k_results(final_result, final_output)
+    print_comprehensive_report(all_results, args.topk)
+
 
 if __name__ == "__main__":
     main()
