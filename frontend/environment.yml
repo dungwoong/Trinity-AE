@@ -1,0 +1,12 @@
+name: trinity_fe
+channels:
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - --pre
+      - -f https://mlc.ai/wheels
+      - mlc-ai-nightly-cpu
+      - numpy
+      - torch
