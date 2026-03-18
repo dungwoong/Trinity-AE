@@ -205,3 +205,9 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Trinity outputs
+frontend/outputs/
+optimizer/expressions/
+backend/profile_result/
+backend/codegen/triton_generator_backup/

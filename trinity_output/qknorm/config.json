@@ -1,0 +1,19 @@
+{
+  "backend_timeout_s": 7200,
+  "basename": "qknorm",
+  "cost": 6,
+  "decompose_nested_op_ratio": 0.3,
+  "device": 0,
+  "fail_on_frontend_errors": false,
+  "inline_elementwise_op": true,
+  "inline_shape_op": true,
+  "kern": 1,
+  "optimizer_iter_limit": 8,
+  "optimizer_timeout_s": 3600,
+  "output_dir": "/home/chani227/Trinity-AE/trinity_output",
+  "remove_short_loop_threshold": 64,
+  "skip_backend": false,
+  "skip_frontend": false,
+  "skip_optimizer": false,
+  "verbose": true
+}
