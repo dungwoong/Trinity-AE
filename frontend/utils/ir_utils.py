@@ -1165,9 +1165,63 @@ def inline_shape_op_calls(main_func: T.MainFunc) -> T.MainFunc:
                 ok = ok and (not arg_found or arg_ok)
         return found, ok
 
+    analyses = [_analyze_call_pattern(call) for call in calls]
+
+    def _can_inline_all_uses(idx: int) -> bool:
+        call = calls[idx]
+        if "concat" in call.primfunc.name:
+            return False
+        if _has_numeric_tile_name(call.primfunc.root_node):
+            return False
+        store = _extract_single_store(call.primfunc.root_node)
+        if store is None:
+            return False
+        out_name = store.tensor.name
+        if out_name != call.out_var_tensor.name:
+            return False
+        if out_name in output_names:
+            return False
+        op_info = _extract_inline_op(store)
+        if op_info is None:
+            return False
+
+        use_found = False
+        for j in range(idx + 1, len(calls)):
+            call_j = calls[j]
+            if not _has_tensor_load(call_j.primfunc.root_node, out_name):
+                continue
+            use_found = True
+            if op_info["op"] in {"permute3", "transpose"}:
+                found_in_matmul, only_in_matmul = _matmul_use_info(call_j.primfunc.root_node, out_name)
+                if not found_in_matmul or not only_in_matmul:
+                    return False
+            new_root = _inline_loads_with_op(call_j.primfunc.root_node, out_name, op_info)
+            if new_root == call_j.primfunc.root_node:
+                return False
+        return use_found
+
+    shape_family_indices: dict[str, list[int]] = {}
+    for idx, call in enumerate(calls):
+        store = _extract_single_store(call.primfunc.root_node)
+        if store is None:
+            continue
+        if _extract_inline_op(store) is None:
+            continue
+        shape_family_indices.setdefault(analyses[idx].signature, []).append(idx)
+
+    blocked_family_indices: set[int] = set()
+    for indices in shape_family_indices.values():
+        if len(indices) < 2:
+            continue
+        if any(not _can_inline_all_uses(idx) for idx in indices):
+            blocked_family_indices.update(indices)
+
     i = 0
     while i < len(calls) - 1:
         call = calls[i]
+        if i in blocked_family_indices:
+            i += 1
+            continue
         if "concat" in call.primfunc.name:
             i += 1
             continue
