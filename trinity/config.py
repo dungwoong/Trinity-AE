@@ -21,8 +21,8 @@ class OptimizeConfig:
     device: int = 0
     inline_shape_op: bool = True
     inline_elementwise_op: bool = True
-    remove_short_loop_threshold: int = 64
-    decompose_nested_op_ratio: float = 0.3
+    remove_short_loop_threshold: int = 24
+    decompose_nested_op_ratio: float = 0.0
     skip_frontend: bool = False
     skip_optimizer: bool = False
     skip_backend: bool = False
@@ -30,7 +30,7 @@ class OptimizeConfig:
     fail_on_frontend_errors: bool = False
     optimizer_iter_limit: int = 8
     optimizer_timeout_s: int = 3600
-    backend_timeout_s: int = 7200
+    backend_timeout_s: int = 9600
 
     @property
     def output_path(self) -> Path:

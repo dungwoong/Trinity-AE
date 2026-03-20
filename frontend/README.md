@@ -16,12 +16,12 @@ IR transformation, and execution, focused on transformer-style models.
 
 ```bash
 conda env create -f environment.yml
-conda activate trinity_fe
+conda activate trinity
 ```
 
 If the environment already exists:
 ```bash
-conda activate tvm
+conda activate trinity
 ```
 
 ### 2. Verify installation

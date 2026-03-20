@@ -79,4 +79,4 @@ if __name__ == "__main__":
     V_cache = torch.randn((H, P + M, D))
 
     model = Vanilla(M, N, D, P, K_cache, V_cache)
-    result = trinity.optimize(model, X, basename="DecAttn", skip_frontend=True, verbose=True)
+    result = trinity.optimize(model, X, basename="DecAttn", verbose=True)

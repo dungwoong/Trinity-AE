@@ -1,21 +1,15 @@
 import copy
 import dataclasses
-<<<<<<< HEAD
 import os
-=======
->>>>>>> origin/main
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 import ir.AST as T
 
 
-<<<<<<< HEAD
 _IR_DEBUG = os.getenv("TRINITY_DEBUG_IR", "").lower() in {"1", "true", "yes", "on"}
 _AXIS_SCORE_DEBUG = os.getenv("TRINITY_DEBUG_AXIS_SCORE", "").lower() in {"1", "true", "yes", "on"}
 
 
-=======
->>>>>>> origin/main
 @dataclass
 class FusionGroup:
     call_indices: List[int]

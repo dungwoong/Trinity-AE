@@ -1,4 +1,4 @@
-name: trinity_fe
+name: trinity
 channels:
   - defaults
 dependencies:
