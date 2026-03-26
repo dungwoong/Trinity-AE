@@ -214,19 +214,6 @@ def _is_simple_identity_index(node: T.ASTNode) -> bool:
     return False
 
 
-<<<<<<< HEAD
-def _is_identity_call(call: T.PrimFuncCall) -> bool:
-    store = _extract_single_store(call.primfunc.root_node)
-    if store is None:
-        return False
-    value = store.value
-    if isinstance(value, T.GenericCall) and value.func_name == "transpose":
-        if not value.args:
-            return False
-        load = value.args[0]
-        if not isinstance(load, T.Load):
-            return False
-=======
 def _analyze_identity_call(call: T.PrimFuncCall) -> tuple[bool, str]:
     store = _extract_single_store(call.primfunc.root_node)
     if store is None:
@@ -238,47 +225,12 @@ def _analyze_identity_call(call: T.PrimFuncCall) -> tuple[bool, str]:
         load = value.args[0]
         if not isinstance(load, T.Load):
             return False, "transpose_base_not_load"
->>>>>>> origin/main
         if len(value.args) == 1:
             perm = list(reversed(range(len(load.index.indices))))
         else:
             perm = []
             for arg in value.args[1:]:
                 if not isinstance(arg, T.Const):
-<<<<<<< HEAD
-                    return False
-                if not isinstance(arg.value, int):
-                    return False
-                perm.append(arg.value)
-        if perm != list(range(len(perm))):
-            return False
-        value = load
-    if isinstance(value, T.Permute3):
-        if (value.d0, value.d1, value.d2) != (0, 1, 2):
-            return False
-        if not isinstance(value.val, T.Load):
-            return False
-        value = value.val
-    if not isinstance(value, T.Load):
-        return False
-    if len(call.input_tensors) != 1:
-        return False
-    input_tensor = call.input_tensors[0]
-    if value.tensor.name != input_tensor.name:
-        return False
-    if input_tensor.shape != call.out_var_tensor.shape:
-        return False
-    # Only treat as identity if indices are plain tiles/fulltile.
-    if not _is_simple_identity_index(store.index):
-        return False
-    if not _is_simple_identity_index(value.index):
-        return False
-    idx_lhs = ast_to_lisp(store.index, level=-1)
-    idx_rhs = ast_to_lisp(value.index, level=-1)
-    if idx_lhs != idx_rhs:
-        return False
-    return value.tensor.name == input_tensor.name
-=======
                     return False, "transpose_perm_not_const"
                 if not isinstance(arg.value, int):
                     return False, "transpose_perm_not_int"
@@ -391,7 +343,6 @@ def _analyze_copy_then_const_tile_overwrite_call(
 def _is_identity_call(call: T.PrimFuncCall) -> bool:
     is_identity, _ = _analyze_identity_call(call)
     return is_identity
->>>>>>> origin/main
 
 
 def _apply_tensor_alias(node: T.ASTNode, alias: dict[str, str]) -> T.ASTNode:
@@ -590,13 +541,6 @@ def _filter_identity_and_apply_alias_calls(
     filtered: List[T.PrimFuncCall] = []
     alias: dict[str, str] = {}
     for call in calls:
-<<<<<<< HEAD
-        if _is_identity_call(call):
-            src = call.input_tensors[0].name
-            dst = call.out_var_tensor.name
-            alias[dst] = alias.get(src, src)
-            continue
-=======
         is_identity, reason = _analyze_identity_call(call)
         if is_identity:
             src = call.input_tensors[0].name
@@ -631,7 +575,6 @@ def _filter_identity_and_apply_alias_calls(
                     f"[filter_identity] keep {call.out_var_tensor.name} "
                     f"({call.primfunc.name}, call {call.call_index}): {reason}"
                 )
->>>>>>> origin/main
         filtered.append(_apply_alias_to_call(call, alias))
     return filtered, alias
 

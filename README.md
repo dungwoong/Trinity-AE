@@ -4,6 +4,22 @@
 
 Trinity is the first tensor program optimizer that achieves scalable joint optimization through tile-level equality saturation. Trinity's IR can capture the essence of all three optimization axes (algebraic equivalence, memory I/O, compute orchestration). By leveraging equality saturation, Trinity enables scalable joint optimization across the entire graph.
 
+## Setup
+
+Run the repository setup script from the project root:
+
+```bash
+chmod +x setup.sh
+./setup.sh
+```
+
+What it does:
+- creates the `trinity` conda environment from `frontend/environment.yml` if it does not already exist
+- installs backend Python dependencies from `backend/requirements.txt`
+- installs optimizer system dependencies with `apt`
+
+The script uses `sudo` for the optimizer packages, so it may prompt for your password.
+
 ## Project Structure
 
 ```

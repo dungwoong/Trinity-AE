@@ -70,7 +70,6 @@ def export_model_ir(
     main_func_ir = sequentialize_main_func(main_func_ir)
     main_func_ir = bind_main_func_calls(main_func_ir)
     main_func_ir = normalize_main_func_axes(main_func_ir)
-    export_main_func(main_func_ir, output_dir, f"{basename}_pre_identity")
     main_func_ir = filter_identity_and_apply_alias(main_func_ir)
     if inline_shape_op:
         main_func_ir = inline_shape_op_calls(main_func_ir)

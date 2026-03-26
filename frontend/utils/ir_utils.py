@@ -3,6 +3,9 @@ import dataclasses
 from dataclasses import dataclass
 from typing import Optional, List, Dict, Tuple
 import ir.AST as T
+import os 
+
+_IR_DEBUG = os.getenv("TRINITY_DEBUG_IR", "").lower() in {"1", "true", "yes", "on"}
 
 @dataclass
 class FusionGroup:
