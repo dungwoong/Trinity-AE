@@ -1,5 +1,22 @@
 ## Quick Start
 
+### Setup
+
+Run the repository setup script from the project root:
+
+```bash
+chmod +x scripts/setup.sh
+./scripts/setup.sh
+conda activate trinity
+```
+
+What it does:
+- creates the `trinity` conda environment from `frontend/environment.yml` if it does not already exist
+- installs backend Python dependencies from `backend/requirements.txt`
+- installs optimizer system dependencies with `apt`
+
+The script uses `sudo` for the optimizer packages, so it may prompt for your password.
+
 ### Usage
 
 Define a PyTorch model, then call `trinity.optimize()`:

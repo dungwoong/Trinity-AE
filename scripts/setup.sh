@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CONDA_ENV_NAME="trinity"
 
 require_command() {
@@ -55,6 +55,7 @@ main() {
   setup_backend
   setup_optimizer
   echo "Setup complete."
+  echo "Run 'conda activate $CONDA_ENV_NAME' in your shell before using Trinity."
 }
 
 main "$@"

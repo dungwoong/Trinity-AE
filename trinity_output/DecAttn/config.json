@@ -1,5 +1,5 @@
 {
-  "backend_timeout_s": 7200,
+  "backend_timeout_s": 9600,
   "basename": "DecAttn",
   "cost": 6,
   "decompose_nested_op_ratio": 0.0,
