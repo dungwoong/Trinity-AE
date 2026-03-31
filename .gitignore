@@ -211,3 +211,8 @@ frontend/outputs/
 optimizer/expressions/
 backend/profile_result/
 backend/codegen/triton_generator_backup/
+trinity_output/
+
+node_modules/
+package-lock.json
+package.json

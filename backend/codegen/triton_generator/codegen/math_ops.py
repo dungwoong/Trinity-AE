@@ -72,6 +72,17 @@ class ScalarOps:
         else:
             node.tensor_shape = None
 
+        left_block_shape = getattr(left_child, "block_shape", None)
+        right_block_shape = getattr(right_child, "block_shape", None)
+        if left_block_shape == right_block_shape:
+            node.block_shape = left_block_shape
+        elif left_block_shape is None:
+            node.block_shape = right_block_shape
+        elif right_block_shape is None:
+            node.block_shape = left_block_shape
+        else:
+            node.block_shape = None
+
         indent_str = '    ' * self.state.indent_level
         temp_var = f"temp_{self.state.temp_counter}"
         self.state.temp_counter += 1
@@ -104,6 +115,17 @@ class ScalarOps:
             node.tensor_shape = left_shape
         else:
             node.tensor_shape = None
+
+        left_block_shape = getattr(left_child, "block_shape", None)
+        right_block_shape = getattr(right_child, "block_shape", None)
+        if left_block_shape == right_block_shape:
+            node.block_shape = left_block_shape
+        elif left_block_shape is None:
+            node.block_shape = right_block_shape
+        elif right_block_shape is None:
+            node.block_shape = left_block_shape
+        else:
+            node.block_shape = None
 
         indent_str = '    ' * self.state.indent_level
         temp_var = f"temp_{self.state.temp_counter}"
@@ -177,6 +199,7 @@ class ScalarOps:
         node.temp_var = temp_var
 
         node.tensor_shape = getattr(value_node, "tensor_shape", None)
+        node.block_shape = getattr(value_node, "block_shape", None)
         return f"{value_code}{indent_str}{temp_var} = {value_expr}.to({dtype})"
 
     def generate_reduce_sum(self, node: ASTNode) -> str:

@@ -68,4 +68,4 @@ if __name__ == "__main__":
     V_cache = torch.randn((H, P, D))
 
     model = PreNormAttn(M, H, D, P, K_cache, V_cache)
-    result = trinity.optimize(model, X, basename="prenorm", skip_frontend=True, verbose=True)
+    result = trinity.optimize(model, X, basename="prenorm", verbose=True)

@@ -54,12 +54,11 @@ class Transforms:
         child = node.children[0]
         child_code = ""
 
-        # If child doesn't have temp_var yet, generate it
+        # If child doesn't have temp_var yet, generate it.
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
-                child_code = self.gen.dispatch.generate_node(child)
-                if child_code and not child_code.endswith('\n'):
-                    child_code += '\n'
+            child_code = self.gen.dispatch.generate_node(child)
+            if child_code and not child_code.endswith('\n'):
+                child_code += '\n'
 
         # Get the tensor expression
         if hasattr(child, 'temp_var'):
@@ -387,12 +386,12 @@ class Transforms:
         child = node.children[0]
         child_code = ""
 
-        # If child doesn't have temp_var yet, generate it
+        # Unsqueeze can wrap arbitrary tensor expressions such as sqrt/load/reduce.
+        # Generate the child unconditionally when it has not been materialized yet.
         if not hasattr(child, 'temp_var'):
-            if child.node_type in [NodeType.LOAD, NodeType.UNSQUEEZE, NodeType.SQUEEZE, NodeType.PERMUTE3, NodeType.TRANSPOSE]:
-                child_code = self.gen.dispatch.generate_node(child)
-                if child_code and not child_code.endswith('\n'):
-                    child_code += '\n'
+            child_code = self.gen.dispatch.generate_node(child)
+            if child_code and not child_code.endswith('\n'):
+                child_code += '\n'
 
         # Get the tensor expression
         if hasattr(child, 'temp_var'):
