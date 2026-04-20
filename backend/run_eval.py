@@ -382,30 +382,30 @@ def main():
             print(out)
     
     # ----------------- FlashInfer ---------------------
-    if not fi is None and len(baseline) == 0 or "flashinfer" in baseline:
-        print("="*50)
-        print(f"Starting FlashInfer {target}...")
+    # if not fi is None and len(baseline) == 0 or "flashinfer" in baseline:
+    #     print("="*50)
+    #     print(f"Starting FlashInfer {target}...")
         
-        fi.half()
-        fi = fi.eval()
+    #     fi.half()
+    #     fi = fi.eval()
         
-        with torch.no_grad():
-            for _ in range(10):
-                out = fi(X)
-            torch.cuda.synchronize()
+    #     with torch.no_grad():
+    #         for _ in range(10):
+    #             out = fi(X)
+    #         torch.cuda.synchronize()
 
-            start_event = torch.cuda.Event(enable_timing=True)
-            end_event = torch.cuda.Event(enable_timing=True)
-            start_event.record()
-            for _ in range(ITER):
-                _ = fi(X)
-            end_event.record()
-            torch.cuda.synchronize()
+    #         start_event = torch.cuda.Event(enable_timing=True)
+    #         end_event = torch.cuda.Event(enable_timing=True)
+    #         start_event.record()
+    #         for _ in range(ITER):
+    #             _ = fi(X)
+    #         end_event.record()
+    #         torch.cuda.synchronize()
 
-            flashinfer_time = start_event.elapsed_time(end_event) / ITER
+    #         flashinfer_time = start_event.elapsed_time(end_event) / ITER
 
-        if print_output:
-            print(out)
+    #     if print_output:
+    #         print(out)
     
     # ----------------- FlashTensor ---------------------
     if not ft is None and len(baseline) == 0 or "flashtensor" in baseline:

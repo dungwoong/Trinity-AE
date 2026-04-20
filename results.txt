@@ -1,0 +1,31 @@
+python3 run_eval.py --o 2 --m llama --t vanilla --n 946
+so this is vanilla attention with KV caching from my understanding
+
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.0622          1.00x     
+TensorRT             0.1028          1.65x     
+PyTorch Eager        0.1063          1.71x     
+Torch Inductor       0.0913          1.47x     
+FlashTensor          0.0963          1.55x
+
+==================================================
+BENCHMARK RESULTS: PRENORM (LLAMA)
+==================================================
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.0847          1.00x     
+TensorRT             0.1053          1.24x     
+PyTorch Eager        0.1295          1.53x     
+Torch Inductor       0.1044          1.23x     
+FlashTensor          0.1288          1.52x
+
+==================================================
+BENCHMARK RESULTS: FFN (LLAMA)
+==================================================
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.1795          1.00x     
+TensorRT             0.1741          0.97x     
+PyTorch Eager        0.1963          1.09x     
+Torch Inductor       0.1613          0.90x 
