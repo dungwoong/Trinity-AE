@@ -2,24 +2,17 @@ import triton
 import triton.language as tl
 import torch
 
-# @triton.autotune(
-#     configs = [
-#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 32}),
-#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 64}),
-#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 128}),
-#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 32}),
-#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 64}),
-#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 128}),
-#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 32}),
-#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}),
-#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 128})
-#     ], key=[]
-# )
-
-# best config from profiling
 @triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}, num_warps=4, num_stages=3, num_ctas=1),
+    configs = [
+        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 32}),
+        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 64}),
+        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 128}),
+        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 32}),
+        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 64}),
+        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 128}),
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 32}),
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}),
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 128})
     ], key=[]
 )
 @triton.jit
@@ -216,8 +209,6 @@ def run_forward():
     O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
 
     forward(K_cache, O2, V_cache, WK, WQ, WV, X)
-    best_cfg = kernel_0.best_config
-    # print(best_cfg)
 
 if __name__ == '__main__':
     run_forward()
