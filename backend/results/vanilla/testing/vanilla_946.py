@@ -1,18 +1,26 @@
 import triton
 import triton.language as tl
+from triton.testing import do_bench
 import torch
+import time
+from vanilla_946_edited import forward as forward2
 
+# @triton.autotune(
+#     configs = [
+#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 32}),
+#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 64}),
+#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 128}),
+#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 32}),
+#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 64}),
+#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 128}),
+#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 32}),
+#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}),
+#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 128})
+#     ], key=[]
+# )
 @triton.autotune(
-    configs = [
-        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 32}),
-        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 64}),
-        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 128}),
-        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 32}),
-        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 64}),
-        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 128}),
-        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 32}),
-        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}),
-        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 128})
+    configs=[
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}, num_warps=4, num_stages=3, num_ctas=1),
     ], key=[]
 )
 @triton.jit
@@ -197,18 +205,62 @@ def run_forward():
     std = 0.01
     device='cuda'
     dtype=torch.float16
-    X = torch.randn((M, N), device=device, dtype=dtype) * std
+    X = torch.randn((M, N), dtype=dtype) * std
     
-    WQ = torch.randn((N, N), device=device, dtype=dtype) * std
-    WK = torch.randn((N, N), device=device, dtype=dtype) * std
-    WV = torch.randn((N, N), device=device, dtype=dtype) * std
+    WQ = torch.randn((N, N), dtype=dtype) * std
+    WK = torch.randn((N, N), dtype=dtype) * std
+    WV = torch.randn((N, N), dtype=dtype) * std
 
-    K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
-    V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
+    K_cache = torch.randn((H, P+M, D), dtype=dtype) * std
+    V_cache = torch.randn((H, P+M, D), dtype=dtype) * std
 
-    O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
+    O2 = torch.zeros((M, N), dtype=dtype) * std
 
-    forward(K_cache, O2, V_cache, WK, WQ, WV, X)
+    WQKV = torch.cat([WQ, WK, WV], dim=1).to(dtype=dtype)
+
+    X = X.to(device)
+    WQ = WQ.to(device)
+    WK = WK.to(device)
+    WV = WV.to(device)
+    K_cache = K_cache.to(device)
+    V_cache = V_cache.to(device)
+    O2 = O2.to(device)
+    WQKV = WQKV.to(device)
+
+    fwd1 = lambda: forward(K_cache, O2, V_cache, WK, WQ, WV, X)
+
+    @torch.compile
+    def fuse_this_pls():
+        qkv = torch.matmul(X, WQKV)
+        q, k, v = torch.chunk(qkv, 3, dim=-1)
+        q = q.view(M, H, D)
+        k = k.view(M, H, D)
+        v = v.view(M, H, D)
+        k = k.transpose(0, 1)
+        v = v.transpose(0, 1)
+        K_cache[:, P:P+M, :] = k
+        V_cache[:, P:P+M, :] = v
+
+    def rough_fwd2():
+        fuse_this_pls()
+        forward2(K_cache, O2, V_cache, WK, WQ, WV, X)
+    
+    def gutted_fwd2():
+        forward2(K_cache, O2, V_cache, WK, WQ, WV, X)
+
+    fwd1()
+    rough_fwd2()
+    ms_1 = do_bench(fwd1)
+    time.sleep(2)
+    ms_2 = do_bench(rough_fwd2)
+    time.sleep(2)
+    ms_attn_only = do_bench(gutted_fwd2)
+    time.sleep(2)
+    ms_qkv = do_bench(fuse_this_pls)
+    print(f'{ms_1=}, {ms_2=}')
+    print(f'{ms_qkv=} {ms_attn_only=}')
 
 if __name__ == '__main__':
     run_forward()
+    # if we compile: ms_1=0.07289558987477761, ms_2=0.07820823700339706
+    # no compile: ms_1=0.07334490303061837, ms_2=0.08166449047425241

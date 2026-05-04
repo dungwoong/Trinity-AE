@@ -2,23 +2,17 @@ import triton
 import triton.language as tl
 import torch
 
-# @triton.autotune(
-#     configs = [
-#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 32}),
-#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 64}),
-#         triton.Config({'BLOCK_K': 32, 'BLOCK_P': 128}),
-#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 32}),
-#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 64}),
-#         triton.Config({'BLOCK_K': 64, 'BLOCK_P': 128}),
-#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 32}),
-#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}),
-#         triton.Config({'BLOCK_K': 128, 'BLOCK_P': 128})
-#     ], key=[]
-# )
-
 @triton.autotune(
-    configs=[
-        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}, num_warps=4, num_stages=3, num_ctas=1),
+    configs = [
+        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 32}),
+        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 64}),
+        triton.Config({'BLOCK_K': 32, 'BLOCK_P': 128}),
+        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 32}),
+        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 64}),
+        triton.Config({'BLOCK_K': 64, 'BLOCK_P': 128}),
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 32}),
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 64}),
+        triton.Config({'BLOCK_K': 128, 'BLOCK_P': 128})
     ], key=[]
 )
 @triton.jit
@@ -173,29 +167,3 @@ def forward(K_cache, O2, V_cache, WK, WQ, WV, X, block_k=16, block_p=16):
     # Return output tensors if needed
     # This depends on your specific use case
     pass
-
-
-if __name__ == '__main__':
-    N = 4096
-    H = 32
-    D = 128
-    M = 16
-    N4 = 16384
-    P = 1008
-    std = 0.01
-    device='cuda'
-    dtype=torch.float16
-    X = torch.randn((M, N), device=device, dtype=dtype) * std
-    
-    WQ = torch.randn((N, N), device=device, dtype=dtype) * std
-    WK = torch.randn((N, N), device=device, dtype=dtype) * std
-    WV = torch.randn((N, N), device=device, dtype=dtype) * std
-
-    K_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
-    V_cache = torch.randn((H, P+M, D), device=device, dtype=dtype) * std
-
-    O2 = torch.zeros((M, N), device=device, dtype=dtype) * std
-
-    forward(K_cache, O2, V_cache, WK, WQ, WV, X)
-    best_cfg = kernel_0.best_config
-    # print(best_cfg)
