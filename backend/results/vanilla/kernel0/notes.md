@@ -1,0 +1,3 @@
+- line 1232 they use shfl sync bfly so they're accumulating a sum every single time they wanna do the rowsum even tho you don't need the rowsum till later
+    - I guess there isn't really a way in triton to suggest that you are doing the sum in stages
+- they also use cp async which is an issue for these memory-bound kernels I'd say. It's not really a fair comparison. I could get gemini to vibe-code something up in triton for a fair comparison

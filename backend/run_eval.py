@@ -382,6 +382,7 @@ def main():
             print(out)
     
     # ----------------- FlashInfer ---------------------
+    # NOTE flashinfer isn't working right now
     # if not fi is None and len(baseline) == 0 or "flashinfer" in baseline:
     #     print("="*50)
     #     print(f"Starting FlashInfer {target}...")
@@ -393,6 +394,7 @@ def main():
     #         for _ in range(10):
     #             out = fi(X)
     #         torch.cuda.synchronize()
+    #         print('done flashinfer warmup')
 
     #         start_event = torch.cuda.Event(enable_timing=True)
     #         end_event = torch.cuda.Event(enable_timing=True)
@@ -404,6 +406,7 @@ def main():
 
     #         flashinfer_time = start_event.elapsed_time(end_event) / ITER
 
+    #     print('done flashinfer profiling')
     #     if print_output:
     #         print(out)
     
