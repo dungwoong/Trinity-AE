@@ -29,3 +29,14 @@ Trinity              0.1795          1.00x
 TensorRT             0.1741          0.97x     
 PyTorch Eager        0.1963          1.09x     
 Torch Inductor       0.1613          0.90x 
+
+==================================================
+BENCHMARK RESULTS: QKNORM (LLAMA)
+==================================================
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.0720          1.00x     
+TensorRT             0.1018          1.42x     
+PyTorch Eager        0.1558          2.16x     
+Torch Inductor       0.1089          1.51x     
+FlashTensor          0.1497          2.08x 
