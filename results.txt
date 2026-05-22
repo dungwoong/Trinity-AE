@@ -40,3 +40,38 @@ TensorRT             0.1018          1.42x
 PyTorch Eager        0.1558          2.16x     
 Torch Inductor       0.1089          1.51x     
 FlashTensor          0.1497          2.08x 
+
+
+SWITCHED TO DO_BENCH
+
+==================================================
+BENCHMARK RESULTS: VANILLA (LLAMA)
+==================================================
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.0722          1.00x     
+TensorRT             0.1140          1.58x     
+PyTorch Eager        0.0926          1.28x     
+Torch Inductor       0.0740          1.02x     
+FlashTensor          0.1008          1.40x
+
+==================================================
+BENCHMARK RESULTS: QKNORM (LLAMA)
+==================================================
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.0810          1.00x     
+TensorRT             0.1143          1.41x     
+PyTorch Eager        0.1225          1.51x     
+Torch Inductor       0.0781          0.96x     
+FlashTensor          0.1551          1.92x
+
+==================================================
+BENCHMARK RESULTS: FFN (LLAMA)
+==================================================
+Method               Time (ms)       Speedup   
+---------------------------------------------
+Trinity              0.1918          1.00x     
+TensorRT             0.1903          0.99x     
+PyTorch Eager        0.2076          1.08x     
+Torch Inductor       0.1755          0.92x
