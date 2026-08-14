@@ -3,6 +3,13 @@ import argparse, torch, importlib.util, sys, json
 from triton.testing import do_bench
 import time
 
+def get_rmse(ref: torch.Tensor, o: torch.Tensor):
+    ref, o = ref.flatten(), o.flatten()
+    assert o.dtype == ref.dtype
+    mse = torch.nn.functional.mse_loss(o, ref, reduction='mean')
+    rmse = mse.sqrt().item()
+    return rmse
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -120,7 +127,8 @@ def main():
         torch.cuda.manual_seed(42)
     
     # --------------- Init for Attention ---------------------
-    std = 0.01
+    std = 1
+    # std = 0.01
     X = torch.randn((M, N), device=device, dtype=dtype) * std
     
     WQ = torch.randn((N, N), device=device, dtype=dtype) * std
@@ -227,6 +235,9 @@ def main():
             ti = FFN(M, N, N4, WO=WO, WFF1a=WFF1a, WFF1b=WFF1b, WFF2=WFF2, device=device, dtype=dtype)
             fi = None
             ft = None
+    
+    # --------------- Precision testing -----------
+    OUTPUTS = dict()
 
     # --------------- Trinity ---------------------
     print("="*50)
@@ -296,6 +307,7 @@ def main():
 
         if print_output:
             print(O2)
+        OUTPUTS['Trinity'] = O2.clone().detach()
 
     # ----------------- TensorRT ---------------------
     if len(baseline) == 0 or "tensorrt" in baseline:
@@ -328,6 +340,7 @@ def main():
 
         if print_output:
             print(out)
+        OUTPUTS['tensorrt'] = out.clone().detach()
 
     # ----------------- Pytorch Eager ----------------------
     if len(baseline) == 0 or "pytorch" in baseline:
@@ -360,6 +373,7 @@ def main():
 
         if print_output:
             print(out)
+        OUTPUTS['pytorch'] = out.clone().detach()
 
     # ----------------- Torch Inductor ---------------------
     if len(baseline) == 0 or "inductor" in baseline:
@@ -391,37 +405,37 @@ def main():
 
         if print_output:
             print(out)
+        OUTPUTS['inductor'] = out.clone().detach()
     
     # ----------------- FlashInfer ---------------------
-    # NOTE flashinfer isn't working right now
-    if not fi is None and len(baseline) == 0 or "flashinfer" in baseline:
-        print("="*50)
-        print(f"Starting FlashInfer {target}...")
+    # if not fi is None and len(baseline) == 0 or "flashinfer" in baseline:
+    #     print("="*50)
+    #     print(f"Starting FlashInfer {target}...")
         
-        fi.half()
-        fi = fi.eval()
+    #     fi.half()
+    #     fi = fi.eval()
         
-        with torch.no_grad():
-            # for _ in range(10):
-            #     out = fi(X)
-            # torch.cuda.synchronize()
-            # print('done flashinfer warmup')
+    #     with torch.no_grad():
+    #         # for _ in range(10):
+    #         #     out = fi(X)
+    #         # torch.cuda.synchronize()
+    #         # print('done flashinfer warmup')
 
-            # start_event = torch.cuda.Event(enable_timing=True)
-            # end_event = torch.cuda.Event(enable_timing=True)
-            # start_event.record()
-            # for _ in range(ITER):
-            #     _ = fi(X)
-            # end_event.record()
-            # torch.cuda.synchronize()
+    #         # start_event = torch.cuda.Event(enable_timing=True)
+    #         # end_event = torch.cuda.Event(enable_timing=True)
+    #         # start_event.record()
+    #         # for _ in range(ITER):
+    #         #     _ = fi(X)
+    #         # end_event.record()
+    #         # torch.cuda.synchronize()
 
-            # flashinfer_time = start_event.elapsed_time(end_event) / ITER
-            flashinfer_time = do_bench(lambda: fi(X))
-            time.sleep(2)
+    #         # flashinfer_time = start_event.elapsed_time(end_event) / ITER
+    #         flashinfer_time = do_bench(lambda: fi(X))
+    #         time.sleep(2)
 
-        print('done flashinfer profiling')
-        if print_output:
-            print(out)
+    #     print('done flashinfer profiling')
+    #     if print_output:
+    #         print(out)
     
     # ----------------- FlashTensor ---------------------
     if not ft is None and len(baseline) == 0 or "flashtensor" in baseline:
@@ -463,6 +477,14 @@ def main():
             print("-" * 35)
             for name, time_val in results:
                 print(f"{name:<20} {time_val:<15.4f}")
+    
+    # OUTPUTS['zeros'] = torch.zeros(M, N, dtype=dtype, device=device)
+    output_keys = list(OUTPUTS.keys())
+    for i in range(len(output_keys)):
+        for j in range(i+1, len(output_keys)):
+            k, k2 = output_keys[i], output_keys[j]
+            rmse = get_rmse(OUTPUTS[k], OUTPUTS[k2])
+            print(f'RMSE {k} vs {k2}: {rmse}')
 
 
 if __name__ == "__main__":
