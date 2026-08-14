@@ -127,7 +127,7 @@ def main():
         torch.cuda.manual_seed(42)
     
     # --------------- Init for Attention ---------------------
-    std = 1
+    std = 0.1
     # std = 0.01
     X = torch.randn((M, N), device=device, dtype=dtype) * std
     
@@ -155,7 +155,7 @@ def main():
     noise = torch.randn((H, M, P+M), device=device, dtype=dtype) * std
 
     # --------------- Init for FFN ---------------------
-    std = 0.001
+    # std = 0.001
     if target == "ffn":
         O2 = O2
     else:
