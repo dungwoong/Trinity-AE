@@ -1,0 +1,19 @@
+(ploop 0 M tile_m m
+  (ploop 0 N tile_n n
+    (sloop 0 K tile_k k
+      (store (output O)
+        (+
+          (@
+            (load (input X) (index (tile m) (tile k)))
+            (load (input W) (index (tile k) (tile n)))
+          )
+          (*
+            1
+            (load (output O) (index (tile m) (tile n)))
+          )
+        )
+        (index (tile m) (tile n))
+      )
+    )
+  )
+)

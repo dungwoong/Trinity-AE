@@ -1,0 +1,31 @@
+shape,m,n,k,method,ms,tflops,rmse,max_abs,config
+0,2048,2048,2048,cublas,0.02894,593.6,2.078e-04,1.932e-03,
+0,2048,2048,2048,triton_persistent,0.03140,547.1,2.078e-04,1.932e-03,stride BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+0,2048,2048,2048,trinity,0.04419,388.8,6.622e-04,7.494e-03,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+1,4096,4096,4096,cublas,0.19219,715.1,2.078e-04,1.981e-03,
+1,4096,4096,4096,triton_persistent,0.19553,702.9,2.078e-04,1.981e-03,chunk BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+1,4096,4096,4096,trinity,0.31301,439.1,8.900e-04,1.248e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+2,8192,8192,8192,cublas,1.59845,687.9,2.079e-04,1.996e-03,
+2,8192,8192,8192,triton_persistent,1.47327,746.3,2.079e-04,1.996e-03,stride BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+2,8192,8192,8192,trinity,2.66878,412.0,1.220e-03,1.875e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+3,1024,14336,4096,cublas,0.18057,666.0,2.077e-04,1.970e-03,
+3,1024,14336,4096,triton_persistent,0.18370,654.7,2.077e-04,1.970e-03,stride BM;BN;GROUP_M;stages;warps=128;128;8;5;4
+3,1024,14336,4096,trinity,0.26373,456.0,8.896e-04,1.093e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+4,1024,28672,8192,cublas,0.65058,739.4,2.079e-04,1.993e-03,
+4,1024,28672,8192,triton_persistent,0.70052,686.7,2.079e-04,1.993e-03,stride BM;BN;GROUP_M;stages;warps=128;256;8;3;8
+4,1024,28672,8192,trinity,1.04164,461.8,1.220e-03,1.748e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+5,1024,16384,2048,cublas,0.10146,677.3,2.076e-04,1.966e-03,
+5,1024,16384,2048,triton_persistent,0.10593,648.7,2.076e-04,1.966e-03,stride BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+5,1024,16384,2048,trinity,0.15937,431.2,6.615e-04,7.365e-03,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+6,4096,1024,4096,cublas,0.05005,686.5,2.078e-04,1.956e-03,
+6,4096,1024,4096,triton_persistent,0.05260,653.2,2.078e-04,1.956e-03,stride BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+6,4096,1024,4096,trinity,0.07737,444.1,8.904e-04,9.206e-03,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+7,4096,1024,8192,cublas,0.09178,748.7,2.078e-04,1.977e-03,
+7,4096,1024,8192,triton_persistent,0.09483,724.7,2.078e-04,1.977e-03,chunk BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+7,4096,1024,8192,trinity,0.14900,461.2,1.219e-03,1.551e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+8,4096,1536,7168,cublas,0.12778,705.8,2.077e-04,1.979e-03,
+8,4096,1536,7168,triton_persistent,0.13827,652.3,2.077e-04,1.979e-03,stride BM;BN;GROUP_M;stages;warps=64;256;8;5;8
+8,4096,1536,7168,trinity,0.20238,445.7,1.146e-03,1.490e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
+9,4096,1024,16384,cublas,0.18563,740.4,2.083e-04,2.000e-03,
+9,4096,1024,16384,triton_persistent,0.18488,743.4,2.083e-04,2.000e-03,chunk BM;BN;GROUP_M;stages;warps=128;256;8;4;8
+9,4096,1024,16384,trinity,0.30331,453.1,1.694e-03,2.110e-02,autotuned BLOCK_M: 128; BLOCK_N: 128; BLOCK_K: 128; num_warps: 4; num_ctas: 1; num_stages: 3; maxnreg: None
